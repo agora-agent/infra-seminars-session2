@@ -1,0 +1,17 @@
+# Build artifacts
+*.o
+*.out
+*.exe
+
+# Editor
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CUDA build
+*.cubin
+*.ptx
+*.fatbin
