@@ -1,83 +1,106 @@
-# Session 2: Memory Abstraction & Hierarchy
+# Session 2: Memory Hierarchy and Fast SIMT GEMM
 
 **Weiming HPC Training Camp × LCPU AI Infra Seminars**
 
-## Overview
+本讲用一个不依赖 Tensor Core 的 FP32 GEMM，建立从 workload、hardware 到 measurement 的完整推理链：
 
-本讲目标是让大家学会 memory hierarchy，并且能写出一个 CUDA core FP32 GEMM 并懂得其中的优化技巧；同时建立一个硬件出发的理解，知道 coalesce、bank conflicts、latency hiding 之类分别都对应什么硬件设计问题。
+> Workload 决定值得复用的数据，hardware 决定数据能放在哪里，profiling 负责验证瓶颈是否真的迁移。
 
-选择 CUDA core FP32 GEMM 是因为这是接触 data reuse，进而了解 memory abstraction 的最简例子，同时 FP32 本身把 tensor core 和流水之类的内容推后了，也做一个零前置知识的铺垫。
+课程最终目标不是复刻 cuBLAS，而是让听众能够解释并实现：coalescing、shared-memory tiling、register tiling、bank-aware mapping、latency hiding，以及它们对应的硬件约束。
 
-**主线思路**: Workload → Hardware → Measurement/Profiling/Writing Kernel
+## 课程主结果
 
-## Schedule (Tentative)
+`code/gemm/gemm_bench.cu` 包含一条经过 A100 80GB PCIe 测试的完整演进路线：
 
-为了把这团互相依赖的知识拆成一个 DAG，采用逐层递进的形式：
-1. 先总体讲 GEMM evolution，从 strawman GEMM 到 data reuse
-2. 从硬件视角讲 SM 的结构（硬件限制来自哪里，硬件 trade-off）
-3. 最后讲一个完整 kernel 的写法以及调优
+| 版本 | 主要机制 | 4096³ 实测 |
+|---|---|---:|
+| V1 | 故意错误的 warp mapping（反例） | 0.43 TFLOP/s |
+| V0 | coalesced naive | 2.11 TFLOP/s |
+| V2 | shared-memory tiling | 3.95 TFLOP/s |
+| V3 | 1D register tiling | 6.02 TFLOP/s |
+| V4 | 2D register tiling | 9.38 TFLOP/s |
+| V5 | 2D tiling + `float4` loading | 10.70 TFLOP/s |
+| V5b | 2D tiling + bank-aware ownership | 10.24 TFLOP/s |
+| V6 | vectorized + bank-aware | **10.97 TFLOP/s** |
+| cuBLAS pedantic | FP32 CUDA Core baseline | **14.41 TFLOP/s** |
 
-### Act I — GEMM Evolution Preview
+V6 在 4096³ 上稳定复现 pedantic FP32 cuBLAS 的 **76.1%–76.2%**。8192³ 曾观测到 **90.4%**，但 2026-07-28 在两张空闲 A100 上复验为 **80.7%–80.8%**；因此课程只采用 4096³ 的约 76% 作为 headline，不将 8192³ 的单次高值泛化为跨 shape 性能保证。
 
-- 从计算语义出发，先写个每线程负责一个元素的 strawman GEMM（15-779 的例子）
-- 考虑 C[i,j] 和 C[i, j+1] 的数据复用，引出"搬入的数据是否服务了足够多的 FMA"
-- 复习 shared memory 等内容，并指出可以用这个 scratchpad 复用数据
-- 引入 Roofline Model，并定量分析 tiling 的 data reuse 数量级
-- LLM Workload 中的 GEMM："权重量化和 speculative decoding 就是在 roofline 上往右挪"
+比较双方均使用严格 FP32：
 
-### Act II — Hardware Explanation
+- 自写 kernel：FP32 CUDA Core / FFMA；不使用 Tensor Core、`cp.async`/TMA、double buffering 或 software pipeline。
+- cuBLAS：`CUBLAS_COMPUTE_32F_PEDANTIC` + `CUBLAS_PEDANTIC_MATH`。
 
-1. **Warp 执行和 Coalescing**
-   - 回顾 SIMT：软件上期望有成千上万的逻辑 threads，但硬件不能都有自己的 instruction fetch、scheduler、memory port（面积、功耗成本）
-   - 软件写的是 scalar-thread 式代码，但必须意识到硬件以 warp 为主要的执行和发射单位
-   - 认识到需要规则的控制流和地址模式
+完整测量边界、roofline 与 NCU 解释见 [A100 results](docs/results/a100-pcie80.md)。
 
-2. **SMSP, Warp Scheduling, and Latency Hiding**
-   - 即使访存 coalesced，一次 HBM/L2 miss 仍然非常长，如何避免 SM 完全停住？
-   - SM 的（教学简化）模型：4 个 SMSP，resident warps 每 issue cycle 被 scheduler 选出 eligible 的
-   - In-Flight Bytes（Occupancy × MLP），覆盖延迟
-   - Occupancy：提供候选的 resident warps，有限的 on-chip 资源和 occupancy 的 trade-off (revisit roofline)
+## 三幕结构
 
-3. **Shared Memory 语义和 Tiling**
-   - Shared Memory 可以被理解为硬件管理的 L1 cache 被分了一部分
-   - 为什么 cache 不能完全代替 shared memory？机会性 vs 几乎固定的规整 workload，程序显式表达
-   - Shared Memory 的可见性与 `__syncthreads`
+1. **Act I — Preview**：从 GEMM 语义、data reuse 和 Roofline 看完整优化地图。
+2. **Act II — Explain**：从 warp、SMSP、memory hierarchy、banked SRAM 和 register file 解释优化为何存在。
+3. **Act III — Rebuild**：按 V0 → V6 重建 kernel，并用 correctness harness 与 NCU 验证瓶颈迁移。
 
-4. **Banked Shared Memory (Padding & Swizzle)**
-   - 为什么 shared memory 在片上，但还是可能因为地址模式变慢？
-   - 一个真正支持 32 个独立并发 read port 的 SRAM 带来很高的面积和 routing 成本，实际做法是划分成 banks
-   - 调整访问模式来适应 bank 结构
-   - 数学 trick：padding 和 XOR 如何打乱访问顺序
+详细讲义见 [seminar outline](docs/seminar-outline.md) 和 [Act III walkthrough](docs/act-iii-gemm-evolution.md)。
 
-5. **Register File and Per-thread Microtiles**
+## Repository layout
 
-6. **(附录) L2 Locality and Block Ordering**
-   - Block 间仍会有相同 A/B tiles 读取，device-wide 地看还有 L2
-   - 目标：让时间上相近的 CTA 访问的 working set 尽可能小
-
-### Act III — Writing/Profiling
-
-- 决定 CTA 计算哪个 C tile
-- 决定 thread microtile
-- Warp Lanes 映射到输出坐标，尽可能 coalesce
-- 协作加载 A/B tiles
-- 选择 shared memory physical layout
-- 根据片上资源 tune 各种 tile 大小和资源分配的选择
-- **需要附有 NCU 实践**（至少以截图形式）
-
-## Repository Structure
-
-```
+```text
 .
-├── README.md          # This file
-├── slides/            # Presentation materials
-├── code/              # CUDA kernel implementations
-│   ├── 00-strawman-gemm/
-│   ├── 01-tiled-gemm/
-│   └── 02-optimized-gemm/
-├── exercises/         # Hands-on exercises
-└── references/        # Reference materials and papers
+├── Makefile
+├── code/
+│   ├── README.md
+│   ├── gemm/                  # V0–V6 + pedantic cuBLAS harness
+│   ├── memory-layout/         # transpose/padding/XOR microbenchmark
+│   └── scripts/               # reproducible NCU commands
+├── docs/
+│   ├── seminar-outline.md
+│   ├── act-iii-gemm-evolution.md
+│   ├── evidence-checklist.md
+│   └── results/a100-pcie80.md
+└── exercises/README.md
 ```
+
+## Quick start
+
+在 CUDA 13 / A100（SM80）环境中：
+
+```bash
+make CUDA_ARCH=80
+
+./build/gemm_bench --kernel all --m 4096 --n 4096 --k 4096 \
+  --warmup 3 --iters 10
+
+./build/gemm_bench --kernel all --m 257 --n 263 --k 269 \
+  --warmup 1 --iters 1
+```
+
+运行 shared-memory layout 实验：
+
+```bash
+./build/bank_conflict_demo --kernel all --m 4096 --n 4096 \
+  --warmup 3 --iters 20
+```
+
+采集 NCU 报告：
+
+```bash
+code/scripts/profile-gemm.sh v06 4096 4096 4096
+code/scripts/profile-memory-layout.sh t2 4096 4096
+```
+
+性能发布前请固定 GPU、clock、版本、GPU idle policy、warmup/iterations，并保留原始日志。单次课程机器结果不是架构常数。
+
+## 课程验收标准
+
+以 A100 80GB PCIe、4096³、pedantic FP32 cuBLAS 为基准：
+
+| 等级 | 目标 |
+|---|---:|
+| Correct baseline | > 2 TFLOP/s |
+| Basic tiled | > 3.5 TFLOP/s |
+| Good SIMT | > 6 TFLOP/s |
+| Strong SIMT | > 9 TFLOP/s |
+| Final Act III | > 10.5 TFLOP/s and ≥ 70% cuBLAS |
+| Stretch | ≥ 80% cuBLAS |
 
 ## Contributors
 

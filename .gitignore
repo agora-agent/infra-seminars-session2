@@ -15,3 +15,7 @@ Thumbs.db
 *.cubin
 *.ptx
 *.fatbin
+build/
+reports/
+*.ncu-rep
+*.nsys-rep
