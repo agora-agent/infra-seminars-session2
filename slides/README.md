@@ -28,9 +28,22 @@ typst compile --font-path theme/_assets/fonts session2.typ build/session2.pdf
 slides/
 ├── Makefile
 ├── README.md
-├── session2.typ      # deck 入口（框架）
+├── session2.typ      # deck 入口（框架 + Labs 正文）
+├── assets/           # Labs 章节引用的实测图与架构图
 └── theme/            # vendored nv-slides-lab 源码（勿手工修改）
 ```
+
+## Labs 章节
+
+`= Labs: 详细例子` 已填入两个完整案例（其余章节仍为 `#todo` 框架）：
+
+- **Lab A — saxpy**：Roofline → Little's Law → occupancy / 向量化两条路 → 三个陷阱 → 处方。
+- **Lab B — reduce**：V1 global atomic → V7 `float4`，含 bank conflict 与指令数的取舍。
+
+两个 lab 的图元定义在 `session2.typ` 顶部的「Labs 专用组件」区块（`metric-table` 与
+若干 `figures.responsive-canvas` 图），颜色一律取自 `palette`，不要在页面里硬编码色值。
+`assets/` 中的实测图（`fig*.png`、`reduce_*.png`）与架构图（`sm_*`）来自
+`ai_infra_seminar` 的原始实验，引用时保留其测量边界说明。
 
 ## 框架约定
 
