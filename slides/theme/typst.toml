@@ -1,0 +1,11 @@
+[package]
+name = "diagram-slides"
+version = "0.1.0"
+entrypoint = "lib.typ"
+authors = ["ZYX", "Codex"]
+license = "MIT"
+description = "Diagram-native Touying slides with responsive CeTZ figures, semantic layouts, and presentation-oriented code blocks."
+keywords = ["slides", "presentation", "touying", "cetz", "code"]
+categories = ["presentation"]
+compiler = "0.15.0"
+exclude = ["demo.pdf"]

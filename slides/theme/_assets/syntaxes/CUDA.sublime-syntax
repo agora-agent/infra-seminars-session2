@@ -1,0 +1,58 @@
+%YAML 1.2
+---
+name: CUDA
+file_extensions:
+  - cu
+  - cuh
+scope: source.cuda
+contexts:
+  main:
+    - match: '//.*$'
+      scope: comment.line.double-slash.cuda
+    - match: '/\*'
+      scope: punctuation.definition.comment.begin.cuda
+      push: block-comment
+    - match: '"'
+      scope: punctuation.definition.string.begin.cuda
+      push: double-quoted-string
+    - match: "'"
+      scope: punctuation.definition.string.begin.cuda
+      push: single-quoted-string
+    - match: '\b(__global__|__device__|__host__|__shared__|__constant__|__managed__|__launch_bounds__)\b'
+      scope: storage.modifier.cuda
+    - match: '\b(if|else|for|while|do|switch|case|break|continue|return|sizeof|typedef|using|namespace|template|class|struct|enum|public|private|protected|const|constexpr|static|volatile|extern|inline|restrict|new|delete)\b'
+      scope: keyword.control.cuda
+    - match: '\b(void|bool|char|short|int|long|float|double|half|dim3|uint3|int2|int3|int4|float2|float3|float4|size_t|cudaError_t)\b'
+      scope: storage.type.cuda
+    - match: '\b(threadIdx|blockIdx|blockDim|gridDim|warpSize)\b'
+      scope: support.variable.cuda
+    - match: '\b(__syncthreads|__syncwarp|__shfl_[a-z_]+|atomic[A-Za-z0-9_]*|cuda[A-Za-z0-9_]*)\b'
+      scope: support.function.cuda
+    - match: '\b[A-Za-z_][A-Za-z0-9_]*(?=\s*\()'
+      scope: entity.name.function.cuda
+    - match: '\b(0x[0-9A-Fa-f]+|\d+(\.\d+)?([eE][+-]?\d+)?[fFuUlL]*)\b'
+      scope: constant.numeric.cuda
+    - match: '(==|!=|<=|>=|&&|\|\||<<|>>|\+\+|--|->|[+\-*/%=&|!<>?:])'
+      scope: keyword.operator.cuda
+
+  block-comment:
+    - meta_scope: comment.block.cuda
+    - match: '\*/'
+      scope: punctuation.definition.comment.end.cuda
+      pop: true
+
+  double-quoted-string:
+    - meta_scope: string.quoted.double.cuda
+    - match: '\\.'
+      scope: constant.character.escape.cuda
+    - match: '"'
+      scope: punctuation.definition.string.end.cuda
+      pop: true
+
+  single-quoted-string:
+    - meta_scope: string.quoted.single.cuda
+    - match: '\\.'
+      scope: constant.character.escape.cuda
+    - match: "'"
+      scope: punctuation.definition.string.end.cuda
+      pop: true
