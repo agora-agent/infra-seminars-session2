@@ -51,15 +51,15 @@
   stroke: auto,
 ) = {
   let defaults = if role == "figure" {
-    (fill: palette.surface, stroke: 0.65pt + palette.grid, inset: 0.68em)
+    (fill: none, stroke: none, inset: 0pt)
   } else if role == "canvas" {
-    (fill: palette.surface, stroke: 0.65pt + palette.grid, inset: 0.18em)
+    (fill: none, stroke: none, inset: 0pt)
   } else if role == "stage" {
     (fill: none, stroke: none, inset: 0pt)
   } else if role == "support" {
-    (fill: palette.panel, stroke: 0.65pt + palette.grid, inset: 0.68em)
+    (fill: none, stroke: none, inset: 0pt)
   } else if role == "card" {
-    (fill: palette.surface, stroke: 0.65pt + palette.grid, inset: 0.68em)
+    (fill: none, stroke: none, inset: 0pt)
   } else {
     (fill: none, stroke: none, inset: 0pt)
   }

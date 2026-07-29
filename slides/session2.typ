@@ -507,92 +507,59 @@
   },
 )
 
-// 自定义 title slide：去掉模板自带的 “schematic whiteboard / cetz-native diagrams”
-// 徽标与 “Design Direction / Workflow” 元文案，右侧 panel 完全由 deck 的 extra 控制。
-#let title-slide(
-  config: (:),
-  subtitle: none,
-  chips: none,
-  extra: none,
-  ..args,
-) = touying-slide-wrapper(self => {
+// 封面：对齐 Session 2.pptx 的第 1–2 页 —— 白底，居中联名标题（Camp × Seminars）
+// + 会话标题 + 演讲者 / 日期 / 两家组织，左下角 “Linux 俱乐部项目” 徽章。
+// 几何按 pptx 的 13.33in × 7.5in 坐标系换算。
+#let title-slide(config: (:), ..args) = touying-slide-wrapper(self => {
   self = utils.merge-dicts(
     self,
     config-common(freeze-slide-counter: true),
-    config-page(fill: palette.page, margin: 1.45em),
+    config-page(
+      fill: palette.page,
+      margin: 0pt,
+      background: brand-badge-corner(),
+    ),
     config,
   )
   let info = self.info + args.named()
 
-  let left = [
-    #if info.institution != none [
-      #kicker(info.institution)
-      #v(0.65em)
-    ]
-    #text(size: 1.82em, weight: "bold")[#info.title]
-    #if subtitle != none [
-      #v(0.35em)
-      #text(size: 0.90em, fill: palette.muted)[#subtitle]
-    ]
-    #if chips != none [
-      #v(0.75em)
-      #chips
-    ]
-    #v(0.9em)
-    #if info.author != none [
-      #text(size: 0.76em)[#info.author]
-    ]
-    #if info.date != none [
-      #h(0.7em)
-      #note(info.date)
-    ]
-  ]
-
-  let right = if extra != none {
-    panel-box(fill: palette.panel, [
-      #panel-box[
-        #extra
+  touying-slide(self: self, layout(size => {
+    let sy = size.height / 7.5
+    set align(center)
+    place(top + center, dy: 1.62 * sy)[
+      #title-text(size: 1.55em)[
+        Weiming HPC Training Camp \
+        × \
+        LCPU AI Infra Seminars
       ]
-    ])
-  } else {
-    []
-  }
-
-  touying-slide(
-    self: self,
-    grid(
-      columns: (1.35fr, 1fr),
-      column-gutter: 1.2em,
-      inset: 0pt,
-      align: top,
-      left,
-      right,
-    ),
-  )
+    ]
+    place(top + center, dy: 3.62 * sy)[
+      #title-text(size: 1.75em)[#info.title]
+    ]
+    place(top + center, dy: 5.06 * sy)[
+      #text(size: 0.72em)[
+        #info.author \
+        #info.date
+      ]
+      #v(0.55em)
+      #text(size: 0.64em)[
+        北京大学未名超算队 · Weiming Supercomputing Team \
+        北京大学学生 Linux 俱乐部 · Linux Club of Peking University
+      ]
+    ]
+  }))
 })
 
 #show: schematic-theme.with(
   config-info(
-    title: [Session 2: Memory Hierarchy and Fast SIMT GEMM],
-    author: [周宇轩 · 林若瑜],
-    date: [2026-07 · Weiming HPC Training Camp × LCPU AI Infra Seminars],
-    institution: [Infra Seminars · Session 2],
+    title: [Session 2: Memory Abstraction and Hierarchy],
+    author: [Zhou Yuxuan, Lin ruoyu],
+    date: [2026. 07. 29],
+    institution: [Weiming HPC & LCPU Infra Seminars],
   ),
 )
 
-#title-slide(
-  subtitle: [],
-  chips: [#chip("") #h(0.5em) #chip("")],
-  // extra: [
-  //   // #kicker("Talk structure")
-  //   // #v(0.2em)
-  //   // #text(size: 0.64em)[
-  //   //   约 2 小时 · Act I Preview → Act II Explain → 同学 Labs (saxpy / reduce / NCU) → Act III Rebuild
-  //   // ]
-  //   // #v(0.5em)
-  //   // #note[目标不是复刻 cuBLAS，而是能解释并实现：coalescing、shared-memory tiling、register tiling、bank-aware mapping、latency hiding。]
-  // ],
-)
+#title-slide()
 
 // ============================================================================
 // Part 1 — saxpy 与硬件基础
@@ -603,12 +570,12 @@
 = Part 1 — saxpy 与硬件基础
 
 #section-intro(
-  objective: [用一个最简单的 memory-bound kernel，建立"在飞字节"这一定量模型，并按需打开硬件。],
-  question: [一个 kernel 最快能跑多快？谁决定了这个上限？],
+  objective: [memory-bound kernel · in-flight bytes · 按需打开硬件],
+  question: [一个 kernel 最快能跑多快？上限由谁决定？],
 )
 
 
-== 一个 kernel 最快能跑多快
+== Kernel 速度上限 Speed Limit
 // 内容：开场问题。先把"限制速度的因素"摆出来，再引入 Roofline 作为第一个模型。
 #layouts.stack(
   rows: (auto, auto),
@@ -620,7 +587,7 @@
     ]
     #v(0.25em)
     #align(center)[
-      #note[写下 kernel 之前，先问它的天花板在哪里 —— 以及天花板由谁决定]
+      #note[天花板在哪？由谁决定？]
     ]
   ],
   [
@@ -630,38 +597,37 @@
         #kicker[算]
         #v(0.3em)
         #text(size: 0.76em)[
-          #accent[峰值算力]：每秒能做多少 FLOP。
-          受限于执行单元数量与频率。
+          #accent[峰值算力] = FLOP/s
+          ← 单元数 × 频率
         ]
       ],
       [
         #kicker[搬]
         #v(0.3em)
         #text(size: 0.76em)[
-          #accent[峰值带宽]：每秒能从 DRAM 搬多少字节。
-          绝大多数 kernel 卡在这里。
+          #accent[峰值带宽] = Byte/s
+          ← DRAM；多数 kernel 卡在这
         ]
       ],
       [
         #kicker[等]
         #v(0.3em)
         #text(size: 0.76em)[
-          #accent[延迟]：数据从发出请求到返回要多久。
-          必须用足够多的并行工作把它盖住。
+          #accent[延迟] = 请求 → 返回
+          ← 靠并行工作盖住
         ]
       ],
     ))
     #v(0.5em)
     #callout("先看前两个")[
       #text(size: 0.80em)[
-        "算"和"搬"的比值决定了 kernel 落在哪一侧 —— 这就是 #accent[Roofline]。
-        第三个因素（延迟）Roofline 不管，我们放到后面再谈。
+        算 / 搬 → #accent[Roofline]；等 → 后面再谈
       ]
     ]
   ],
 )
 
-== Roofline 只回答"在哪一边"
+== Roofline 适用范围 Roofline Scope
 // 内容：算存比定义 + 常见算子的 I；GEMM 是唯一能靠增大分块推过脊点的。
 #layouts.stack(
   top-role: "support",
@@ -690,37 +656,35 @@
     #v(0.4em)
     #align(center)[
       #note[
-        GEMM 是唯一靠#emph[增大分块]就能把 $I$ 推过脊点的常见算子；
-        其余绝大多数算子天生在左边 —— 这正是 Act I 的出发点
+        分块 ↑ ⇒ GEMM $I$ 过脊点；其余算子天生在左边 → Act I
       ]
     ]
   ],
 )
 
-== Roofline 图
+== Roofline 模型 Roofline Model
 // 内容：两段屋顶 + 样例点；roofline 假设"只要在左边就能跑满带宽"，这个假设是错的。
 #layouts.diagram(
   [#saxpy-roofline()],
   [
     #build-step("01", "上限")[
-      Roofline 告诉我们 saxpy 的上限是带宽。
+      saxpy 上限 = 带宽。
     ]
     #v(0.6em)
-    #callout("但它没有告诉我们")[
+    #callout("没回答的")[
       #text(size: 0.78em)[
-        一个完美 coalesced 的 memory-bound kernel，
-        到底能拿到这个上限的百分之多少？
+        完美 coalesced 的 memory-bound kernel
+        能拿到上限的 %？
       ]
       #v(0.3em)
       #note[
-        roofline 假设"只要在左边，就能跑满带宽"——
-        下面这个例子说明这个假设是错的。
+        假设"在左边 ⇒ 满带宽" —— 成立吗？
       ]
     ]
   ],
 )
 
-== 大 GEMM: $I$ 随规模线性增长
+== 大 GEMM 的算存比 GEMM Intensity
 // 内容：唯一"天然" compute-bound 的算子。计算 O(n^3)、数据 O(n^2)，
 //       所以 I = n/3 随规模线性增长 —— 前提是每个元素只从 DRAM 读一次（即 tiling）。
 #layouts.diagram(
@@ -746,13 +710,12 @@
     )
     #v(0.4em)
     #note[
-      这是#emph[理想 $I$]，前提是每个元素只从 DRAM 读一次 ——
-      而这正是 Part 2 里 tiling 要做到的事。
+      理想 $I$ 的前提：每元素只读一次 DRAM → tiling（Part 2）
     ]
   ],
 )
 
-== Decode GEMV: LLM 推理慢的根本原因
+== Decode GEMV 与 LLM 推理 Decode GEMV
 // 内容：batch=1 时每个权重读进来只用一次乘加，I ≈ 1，深度 memory-bound；
 //       batching / 量化 / 投机解码本质上都是在 roofline 上往右往上挪。
 #layouts.diagram(
@@ -760,12 +723,12 @@
   [#gemv-batching-figure()],
   [
     #text(size: 0.74em)[
-      batch = 1 时每一层就是#accent[矩阵 × 向量]：权重 $W$（$n times n$）乘激活 $x$（$n times 1$）。
+      batch = 1 ⇒ 每层 = #accent[矩阵 × 向量]：$W$（$n times n$）· $x$（$n times 1$）
       #linebreak()
       $"FLOP" = 2 n^2$，$"Bytes" approx 2 n^2$ #h(0.3em) $=>$ #h(0.3em) $I approx 1$
     ]
     #v(0.3em)
-    #text(size: 0.74em)[#accent[每个权重从 DRAM 读进来，只参与一次乘加就被丢掉。]]
+    #text(size: 0.74em)[每权重：DRAM 读入 → #accent[1 次乘加] → 丢弃]
     #v(0.4em)
     #metric-table(
       size: 0.64em,
@@ -780,14 +743,14 @@
     #v(0.3em)
     #note[
       #text(size: 0.90em)[
-        #accent[权重量化]（缩小分母）与#accent[投机解码]（等价于提高 batch）之所以有效，
-        都是同一件事：在 roofline 上往右、往上挪。
+        #accent[量化] → 分母 ↓；#accent[投机解码] → batch ↑
+        ⇒ 都在 roofline 上往右、往上
       ]
     ]
   ],
 )
 
-== axpy: 一个再简单不过的 kernel
+== axpy Kernel
 // 内容：kernel 本身挑不出毛病 —— 完美 coalesced、零分支、高 occupancy。
 //       模板参数 scalar_t 让同一份代码可以换 datatype 跑，正是下一页的实验设计。
 #layouts.code-focus(
@@ -807,7 +770,7 @@
   [
     #callout("挑不出毛病")[
       #text(size: 0.78em)[
-        - 完美 #accent[coalesced]：相邻线程访问相邻地址
+        - #accent[coalesced]：相邻线程 ↔ 相邻地址
         - 零分支、零同步、零 shared memory
         - 100% #accent[occupancy]（只用十几个寄存器）
         - embarrassingly parallel，无数据依赖
@@ -815,13 +778,12 @@
     ]
     #v(0.5em)
     #note[
-      模板参数 `scalar_t` 让#emph[同一份代码]换不同 datatype 编译 ——
-      下一页就用它做实验。
+      `scalar_t` → 同一份代码换 datatype → 下一页的实验
     ]
   ],
 )
 
-== 
+== 实测差距 Performance Gap
 // 内容：核心提问页。同一份代码只换 scalar_t，带宽却差一大截；
 //       且 A100 上 fp32/fp64 都接近 STREAM，B200 上却明显掉队。
 #layouts.diagram(
@@ -829,27 +791,27 @@
   [
     #build-step("01", "两个问题")[
       #text(size: 0.86em)[
-        代码一个字没改，只换了 `scalar_t`。
+        代码不变，只换 `scalar_t`。
       ]
     ]
     #v(0.5em)
     #callout("① 为什么窄类型更慢？")[
       #text(size: 0.76em)[
-        fp8 / fp16 搬的字节更少，
-        却离 STREAM #accent[更远]。
+        fp8 / fp16 字节更少
+        → 离 STREAM #accent[更远]？
       ]
     ]
     #v(0.4em)
     #callout("② 为什么卡越新越明显？")[
       #text(size: 0.76em)[
-        A100 上 fp32 / fp64 都#accent[接近饱和]；
-        B200 上同样的代码却明显掉队。
+        A100：fp32 / fp64 #accent[≈ 饱和]
+        B200：同代码 #accent[掉队]？
       ]
     ]
   ],
 )
 
-== 把差距量化
+== 差距量化 Quantified Gap
 // 内容：把上一页的柱状图读成百分比。窄类型的缺口随卡变新而扩大 ——
 //       这不是"新卡优化得更差"，而是同一个模型在更高带宽下的必然结果。
 #layouts.stack(
@@ -866,29 +828,29 @@
       [GPU], [fp8], [fp16], [fp32], [fp64],
       [A100], [41%], [69%], [88%], [#accent[94%]],
       [H200], [25%], [47%], [77%], [#accent[95%]],
-      [B200], [#text(fill: palette.teal)[18%]], [#text(fill: palette.teal)[34%]], [53%], [#accent[83%]],
+      [B200], [#text(fill: palette.accent, weight: "bold")[18%]], [#text(fill: palette.accent, weight: "bold")[34%]], [53%], [#accent[83%]],
     )
   ],
   [
     #v(0.4em)
     #text(size: 0.82em)[
-      沿每一行往左走，缺口变大；沿每一列往下走，缺口也变大。
-      #accent[两个方向的共同点是：每个线程一次搬的字节太少。]
+      行 ← 缺口 ↑；列 ↓ 缺口 ↑
+      ⇒ #accent[每线程一次搬的字节太少]
     ]
     #v(0.4em)
-    #callout("同一个解释")[
+    #callout("对照")[
       #text(size: 0.78em)[
-        fp8 每线程只搬 1 字节，fp64 搬 8 字节 —— 差 8 倍。
-        而 B200 的带宽是 A100 的 4 倍，#accent[要填满它需要的在途数据也成倍增加]。
-        Roofline 里没有任何一项能表达这件事。
+        fp8：1 B/线程 vs fp64：8 B/线程（8×）；
+        B200 带宽 = 4× A100 ⇒ 所需 in-flight bytes ↑↑。
+        Roofline 没有这一项。
       ]
     ]
     #v(0.3em)
-    #note[缺的这个量叫 #accent[在飞字节（bytes in flight）] —— 下面先用一部扶梯把它讲清楚。]
+    #note[缺的量 → #accent[in-flight bytes]]
   ],
 )
 
-== 先看一部扶梯
+== 扶梯 Escalator
 // 内容：Little's Law 的日常直觉版。并发量 = 带宽 × 延迟，先在扶梯上算一遍，
 //       下一页再换成内存系统的说法。
 #layouts.diagram(
@@ -919,20 +881,20 @@
   figure-role: "plain",
 )
 
-== Little's Law: 带宽不是免费的
-// 内容：在飞字节 = 带宽 × 延迟；A100 约 1 MB；摊到每线程 ~4.7 B。
+== Little's Law 与 In-Flight Bytes
+// 内容：in-flight bytes = 带宽 × 延迟；A100 约 1 MB；摊到每线程 ~4.7 B。
 // 承接上一页的扶梯：把"人"换成"字节"，把"梯身"换成"内存系统"。
 #layouts.stack(
   top-role: "card",
   bottom-role: "plain",
   [
     #align(center)[
-      #text(size: 1.15em, weight: "bold")[$ "在飞字节" = "带宽" times "延迟" $]
+      #text(size: 1.15em, weight: "bold")[$ "in-flight bytes" = "带宽" times "延迟" $]
     ]
     #v(0.2em)
     #align(center)[
       #note[
-        把扶梯上的"人"换成"字节" —— Little's Law（$L = lambda W$）在内存系统上的形式
+        人 → 字节 ⇒ Little's Law（$L = lambda W$）
         #h(0.5em) #chip("course design")
       ]
     ]
@@ -944,9 +906,8 @@
         #kicker[含义]
         #v(0.3em)
         #text(size: 0.80em)[
-          想让内存总线以带宽 $B$ 持续吐数据，就必须#accent[始终]有
-          $B times L$ 字节的请求#accent[已经发出、但还没返回]。
-          凑不够这个数，总线就有空档。
+          持续满带宽 $B$ ⇒ #accent[始终]有 $B times L$ 字节
+          #accent[已发出、未返回]；凑不够 ⇒ 总线空档
         ]
       ],
       [
@@ -958,25 +919,24 @@
           ]
         ]
         #v(0.2em)
-        #align(center)[#note[必须同时在途]]
+        #align(center)[#note[同时 in-flight]]
         #v(0.35em)
         #note[
-          H100：3.35 TB/s × ~600 ns ≈ 2 MB；#accent[越新的卡这个数越大]
+          H100：3.35 TB/s × ~600 ns ≈ 2 MB；#accent[卡越新越大]
         ]
       ],
     ))
     #v(0.45em)
-    #callout("回答开头的问题②")[
+    #callout("回到问题②")[
       #text(size: 0.78em)[
-        延迟没怎么变，带宽却翻了几倍 ——
-        所以#accent[越新的卡，要填满它需要的在飞字节越多]。
-        同一份代码在 B200 上离饱和更远，不是代码变差了，是门槛变高了。
+        延迟 ≈ 不变，带宽 ↑↑
+        ⇒ #accent[填满所需in-flight bytes ↑] ⇒ B200 离饱和更远（门槛 ↑，不是代码变差）
       ]
     ]
   ],
 )
 
-== 摊到每个线程头上
+== 每线程 Per Thread
 // 内容：22 万线程 / 1 MB ≈ 4.7 B；朴素 saxpy 每线程 8 B，正好卡在膝点。
 #layouts.stack(
   top-role: "support",
@@ -984,47 +944,46 @@
   [
     #text(size: 0.84em)[
       A100 满占用：108 SM × 2048 线程 = #accent[22 万] 个线程
-      $ "每线程需要的在飞字节" = (1 "MB") / (22 "万") approx #h(0.2em) 4.7 "B" $
+      $ "每线程需要的in-flight bytes" = (1 "MB") / (22 "万") approx #h(0.2em) 4.7 "B" $
     ]
   ],
   [
     #v(0.4em)
     #text(size: 0.86em)[
-      回头看朴素 saxpy：每个线程发 #accent[2 条 4 B load]（读 `x`、读 `y`）= 8 B 在飞。
+      朴素 saxpy：#accent[2 × 4 B load]（`x`、`y`）= 8 B/线程in-flight
     ]
     #v(0.5em)
     #metric-table(
       columns: (auto, auto, auto),
       align: (left, right, left),
-      [], [每 SM 在飞], [],
+      [], [每 SM in-flight], [],
       [朴素 saxpy（满占用，8 B/线程）], [16 KB], [勉强够],
       [Little's Law 膝点（实测）], [16\~32 KB], [#accent[正好卡在边缘]],
     )
     #v(0.5em)
-    #callout("回答开头的问题①")[
+    #callout("回到问题①")[
       #text(size: 0.80em)[
-        8 B/线程 × 满占用 = 16 KB/SM，#accent[正好落在膝点上]，
-        实测 82%（曲线预测 ~80%）。
-        #accent[换成 fp16 就只剩 4 B/线程]，掉到膝点左边 —— 这就是窄类型变慢的原因。
+        8 B × 满占用 = 16 KB/SM ≈ #accent[膝点] → 实测 82%（预测 ~80%）；
+        fp16 → 4 B → #accent[膝点左边] ⇒ 窄类型变慢
       ]
     ]
   ],
 )
 
-== 
+== 二维扫描 2D Sweep
 // 内容：30 个配置，一条曲线；硬件只关心乘积。
 #layouts.diagram(
   [#image("assets/fig1_littles_law.png")],
   [
     #build-step("01", "扫描")[
-      固定 `c = 2a`，二维扫描「每 SM 驻留 block 数」×「每线程在飞 load 数（MLP）」。
+      固定 `c = 2a`，二维扫描「每 SM 驻留 block 数」×「每线程in-flight load 数（MLP）」。
     ]
     #v(0.5em)
     #note[
-      横轴 = 每 SM 在飞字节 = 驻留 warp 数 × 32 × 16 B × MLP。
+      横轴 = 每 SM in-flight bytes = 驻留 warp 数 × 32 × 16 B × MLP。
     ]
     #v(0.5em)
-    #callout("结论")[
+    #callout("结果")[
       #text(size: 0.80em)[
         #accent[30 个配置，一条曲线]
         #h(0.4em) #chip("A100 measured")
@@ -1033,7 +992,7 @@
   ],
 )
 
-== 这张图说了什么
+== 带宽乘积 Bandwidth Product
 // 内容：occupancy 差 8 倍、MLP 差 8 倍，带宽差 2%；硬件只关心乘积。
 #layouts.stack(
   top-role: "card",
@@ -1042,7 +1001,7 @@
     #metric-table(
       columns: (auto, 1fr, auto),
       align: (right, left, right),
-      [每 SM 在飞], [配置], [GB/s],
+      [每 SM in-flight], [配置], [GB/s],
       [16 KB], [32 warp × MLP 1], [1568],
       [16 KB], [16 warp × MLP 2], [1562],
       [16 KB], [8 warp × MLP 4], [1561],
@@ -1055,28 +1014,27 @@
       四个配置的 occupancy 差 #accent[8 倍]、MLP 差 #accent[8 倍]，带宽差 #accent[2%]。
     ]
     #v(0.5em)
-    #callout("于是提高带宽只有两条路")[
+    #callout("两条路")[
       #text(size: 0.82em)[
-        硬件#accent[只关心乘积]，不关心你是靠哪个因子凑出来的：
-        #accent[更多的 warp]（occupancy），
-        或者#accent[每个 warp 发更多 / 更宽的访存]（ILP / 向量化）。
+        硬件只看#accent[乘积]：
+        #accent[更多 warp]（occupancy）
+        ｜#accent[每个 warp 更多 / 更宽访存]（ILP / 向量化）
       ]
     ]
   ],
 )
 
-== 路线一: 为什么 occupancy 能变成带宽
+== 路线一 Occupancy
 // 内容：SM 切成 4 个 sub-partition，每个都是相对独立的调度机器。
 #layouts.split(
   [
     #image("assets/sm_arch.jpg", height: 86%)
     #v(0.2em)
-    #align(center)[#note[Hopper SM · 引自 NVIDIA Hopper 架构白皮书]]
+    #align(center)[#note[Hopper SM, from NVIDIA Hopper whitepaper]]
   ],
   [
     #text(size: 0.80em)[
-      一个 SM 被切成 #accent[4 个 sub-partition]，
-      每个都是一台#accent[相对独立的调度机器]：
+      SM = #accent[4 × sub-partition]，各自独立调度：
     ]
     #v(0.4em)
     #image("assets/sm_subpartition.png", width: 100%)
@@ -1088,8 +1046,8 @@
     ]
     #v(0.35em)
     #note[
-      底部的 256 KB L1 / shared memory 是 4 个 partition #emph[共享]的。
-      图为 Hopper；A100 的四分区结构相同，但 L1/shared 容量为 192 KB。
+      L1 / shared 256 KB：4 个 partition #emph[共享]。
+      图为 Hopper；A100 同构，容量 192 KB。
       #h(0.4em) #chip("architecture-scoped")
     ]
   ],
@@ -1098,7 +1056,7 @@
   primary-align: center + horizon,
 )
 
-== 
+== Warp 调度 Warp Scheduling
 // 内容：warp scheduler 每 cycle 挑一个 eligible warp；切换 0 cycle。
 // 用法：复用 figures.render-warp-trace（与 Part 2 的 NCU Scheduler 统计同一张持久图），
 //       callback 模式逐 cycle 推进；右侧旁白随 subslide 换成 0-cycle 切换的解读。
@@ -1117,21 +1075,20 @@
       [
         #build-step(step-number, cycle.label)[
           #if cycle.issue == "bubble" [
-            没有 eligible warp，这个 cycle 的发射槽#accent[空置]。
+            无 eligible warp → 发射槽#accent[空置]
           ] else [
-            scheduler 从 eligible 的 warp 里选中一个并#accent[发射]。
+            scheduler 选中一个 eligible warp → #accent[发射]
           ]
         ]
         #v(0.6em)
         #callout("0 cycle 切换")[
           #text(size: 0.76em)[
-            每个 scheduler 手上驻留多个 warp slot，#accent[每个 cycle] 重新选一个。
-            切换 warp #accent[不需要保存/恢复现场] ——
-            每个 warp 的寄存器#accent[一直在寄存器堆里]。
+            多 warp slot 驻留，#accent[每 cycle] 重选一个；
+            切换无现场保存 —— 寄存器#accent[常驻寄存器堆]
           ]
           #v(0.2em)
           #note[
-            CPU 换线程要几百到几千 cycle；GPU 换 warp 是 #accent[0 cycle]。
+            CPU 换线程：几百~几千 cycle；GPU 换 warp：#accent[0 cycle]
           ]
         ]
       ],
@@ -1139,7 +1096,7 @@
   },
 )
 
-== 于是访存指令可以连续发射
+== 连续发射 Back-to-Back Issue
 // 内容：低占用总线空闲 vs 高占用总线打满。
 #layouts.stack(
   rows: (52%, auto),
@@ -1150,18 +1107,18 @@
     #v(0.35em)
     #text(size: 0.80em)[
       - warp A 发完 load 就 stall → scheduler 立刻从 warp B 发下一条 load
-      - 每条 load 都在#accent[总线上叠加]，在飞字节线性增长
-      - 直到凑够 $"带宽" times "延迟"$，总线才真正被填满
+      - 每条 load 都在#accent[总线上叠加]，in-flight bytes线性增长
+      - 直到凑够 $"带宽" times "延迟"$，总线才真正填满
     ]
     #v(0.4em)
     #note[
-      注意#accent[不是]"更多 warp 算得更快"—— 计算根本不是瓶颈
-      （`issue_active` 实测只有 1.5%\~4.3%）。是#accent[更多 warp 能同时挂起更多访存请求]。
+      ≠ 算得更快（`issue_active` 仅 1.5%\~4.3%）
+      ⇒ #accent[更多 warp 挂起更多访存请求]
     ]
   ],
 )
 
-== 实测: 占用扫描
+== 占用扫描 Occupancy Sweep
 // 内容：6.25% → 100%，带宽 2.6 倍；唯一可能造成数量级差距的因素。
 #layouts.stack(
   top-role: "card",
@@ -1175,8 +1132,8 @@
     #metric-table(
       columns: (auto, auto, auto, auto),
       align: (center, center, right, right),
-      [每 SM warp 数], [occupancy], [每 SM 在飞], [GB/s],
-      [4], [6.25%], [2 KB], [#text(fill: palette.teal)[620]],
+      [每 SM warp 数], [occupancy], [每 SM in-flight], [GB/s],
+      [4], [6.25%], [2 KB], [#text(fill: palette.accent, weight: "bold")[620]],
       [8], [12.5%], [4 KB], [1033],
       [16], [25%], [8 KB], [1442],
       [32], [50%], [16 KB], [1568],
@@ -1186,28 +1143,27 @@
   [
     #v(0.45em)
     #text(size: 0.88em)[
-      从 6.25% 到 100%，带宽 #accent[2.6 倍]。这是所有因素里#accent[唯一可能造成数量级差距]的。
+      6.25% → 100%：带宽 #accent[2.6×] —— 唯一能造成数量级差距的因素
     ]
     #v(0.45em)
-    #callout("推论")[
+    #callout("注意")[
       #text(size: 0.80em)[
-        #accent[grid 一定要够大]。只 launch 108 个 block（每 SM 恰好 1 个）
-        会比满 grid 慢 23%\~61%。
+        #accent[grid 要够大]：108 block（1/SM）→ 慢 23%\~61%
       ]
     ]
   ],
 )
 
 
-== 路线二: 提高单指令的字节数
-// 内容：在飞字节 = occupancy × 32 × 单指令字节 × MLP；LSU 支持 32/64/128 bit。
+== 路线二 单指令字节 Bytes per Instruction
+// 内容：in-flight bytes = occupancy × 32 × 单指令字节 × MLP；LSU 支持 32/64/128 bit。
 #layouts.stack(
   top-role: "card",
   bottom-role: "plain",
   [
     #align(center)[
       #text(size: 0.86em)[
-        $"每 SM 在飞字节" = underbrace(#text(fill: palette.teal)[驻留 warp 数], "occupancy")
+        $"每 SM in-flight bytes" = underbrace(#text(fill: palette.teal)[驻留 warp 数], "occupancy")
         times 32 times underbrace(#text(fill: palette.orange)[单指令字节数], "向量化")
         times underbrace(#text(fill: palette.violet.darken(30%))["MLP"], "展开")$
       ]
@@ -1216,8 +1172,8 @@
   [
     #v(0.4em)
     #text(size: 0.82em)[
-      occupancy 有硬上限（64 warp），而且常常被寄存器 / smem 压着。
-      那就从#accent[第二个因子]下手 —— 让一条指令搬更多字节。
+      occupancy 硬上限 64 warp，且常受寄存器 / smem 限制
+      → 从#accent[第二个因子]下手：一条指令搬更多字节
     ]
     #v(0.45em)
     #metric-table(
@@ -1231,8 +1187,8 @@
   ],
 )
 
-== 标量 vs 向量化
-// 内容：每线程在飞 8 B → 32 B；指令条数顺带降到 1/4。
+== 标量与向量化 Scalar vs Vector
+// 内容：每线程in-flight 8 B → 32 B；指令条数顺带降到 1/4。
 #layouts.code-compare(
   [
     #kicker[标量]
@@ -1248,7 +1204,7 @@
     #v(0.35em)
     #text(size: 0.76em)[
       - 每线程 2 条 4 B load
-      - 在飞 #accent[8 B]
+      - in-flight #accent[8 B]
     ]
   ],
   [
@@ -1269,12 +1225,12 @@
     #v(0.35em)
     #text(size: 0.76em)[
       - 每线程 2 条 16 B load
-      - 在飞 #accent[32 B]
+      - in-flight #accent[32 B]
     ]
   ],
 )
 
-== 实测: 向量宽度
+== 向量宽度实测 Vector Width Sweep
 // 内容：fp32 float4 +12%；窄数据类型差距才拉开。
 #layouts.stack(
   top-role: "card",
@@ -1291,8 +1247,7 @@
     )
     #v(0.35em)
     #text(size: 0.78em)[
-      fp32 上 `float4` 相对标量 #accent[+12%] —— 真实，但不是数量级差别。
-      窄数据类型下差距才真正拉开：
+      fp32 `float4`：#accent[+12%]（非数量级）；窄类型差距拉开：
     ]
   ],
   [
@@ -1301,20 +1256,20 @@
       columns: (1fr, auto, auto, auto),
       align: (left, center, right, right),
       [写法], [每线程元素], [GB/s], [占峰值],
-      [`__half` 一元素一线程（16-bit load）], [1], [#text(fill: palette.teal)[1112]], [57.5%],
+      [`__half` 一元素一线程（16-bit load）], [1], [#text(fill: palette.accent, weight: "bold")[1112]], [57.5%],
       [`__half2`（32-bit）], [2], [1427], [73.8%],
       [`half8`（128-bit）], [8], [#accent[1592]], [#accent[82.3%]],
     )
     #v(0.35em)
     #align(center)[
       #note[
-        标量 fp16 只有 2 B/线程在飞，满占用也只有 8 KB/SM —— #accent[膝点左边]
+        标量 fp16 只有 2 B/线程in-flight，满占用也只有 8 KB/SM —— #accent[膝点左边]
       ]
     ]
   ],
 )
 
-== 两条路是可以互相替代的
+== 路线互换 Route Interchange
 // 内容：低占用 + 高 MLP ≈ 满占用；满占用时 MLP 完全无所谓。
 #layouts.stack(
   top-role: "card",
@@ -1325,8 +1280,8 @@
     #metric-table(
       columns: (1fr, auto, auto),
       align: (left, right, right),
-      [4 warp/SM（6.25% 占用）], [每 SM 在飞], [GB/s],
-      [MLP = 1], [2 KB], [#text(fill: palette.teal)[620]],
+      [4 warp/SM（6.25% 占用）], [每 SM in-flight], [GB/s],
+      [MLP = 1], [2 KB], [#text(fill: palette.accent, weight: "bold")[620]],
       [MLP = 4], [8 KB], [1393],
       [MLP = 8], [16 KB], [#accent[1534]],
       [参照：满占用最好成绩], [32 KB], [1602],
@@ -1335,19 +1290,19 @@
   [
     #v(0.45em)
     #text(size: 0.88em)[
-      6.25% 占用 + MLP=8 达到 1534 GB/s，与满占用最好成绩#accent[只差 4%]。
+      6.25% 占用 + MLP=8 → 1534 GB/s，与满占用最好成绩#accent[只差 4%]
     ]
     #v(0.45em)
-    #callout("反过来也成立")[
+    #callout("反向")[
       #text(size: 0.80em)[
-        #accent[满占用时 MLP 完全无所谓]。64 warp/SM 下 MLP=1 是 1602，MLP=32 是 1587 ——
-        一条 128-bit load 就够了，因为已经越过膝点。
+        #accent[满占用 ⇒ MLP 无所谓]：MLP=1 → 1602，MLP=32 → 1587
+        （一条 128-bit load 已越膝点）
       ]
     ]
   ],
 )
 
-== 实测热力图
+== 热力图 Heatmap
 // 内容：等值带沿反对角线分布 —— "乘积决定一切"的形状。
 #layouts.diagram(
   [#image("assets/fig2_heatmap.png")],
@@ -1358,15 +1313,14 @@
     #v(0.5em)
     #callout("读法")[
       #text(size: 0.78em)[
-        这正是"乘积决定一切"的形状：
-        沿反对角线移动，occupancy 与 MLP 此消彼长，
-        乘积不变 → 带宽不变。
+        反对角线：occupancy × MLP #accent[乘积不变]
+        ⇒ 带宽不变
       ]
     ]
   ],
 )
 
-== 回头看 Roofline: 它是一个一阶模型
+== Roofline 回顾 Roofline Recap
 // 内容：把 Part 1 一路踩到的坑归位。Roofline 只有两个参数，所以只能回答一个问题；
 //       它成立依赖四条隐含前提，每条被打破都对应一类真实瓶颈。
 //       前提三就是刚讲完的 Little's Law，剩下三条下面逐页展开。
@@ -1375,8 +1329,8 @@
   bottom-role: "plain",
   [
     #text(size: 0.82em)[
-      Roofline 只有#accent[两个参数]（峰值算力、峰值带宽），所以它只能回答一个问题：
-      #accent[如果唯一的瓶颈是 DRAM 带宽或算力，我最快能到多少。]
+      只有#accent[两个参数]（峰值算力、峰值带宽）
+      ⇒ 只回答：#accent[唯一瓶颈是 DRAM 带宽或算力时，最快多少]
     ]
   ],
   [
@@ -1385,23 +1339,23 @@
       size: 0.70em,
       columns: (auto, 1fr, auto),
       align: (left, left, center),
-      [隐含前提], [被打破时的真实瓶颈], [],
+      [隐含前提], [破例时的真实瓶颈], [],
       [DRAM 是唯一的带宽层级], [SMEM / L2 先饱和 → hierarchical roofline], [破例一],
-      [指令只有访存和浮点], [地址计算、循环、类型转换把 issue slot 吃光], [破例二],
-      [延迟总能被并发掩盖], [在飞请求不够，带宽根本没被激发出来], [#text(fill: palette.muted)[已讲]],
+      [指令只有访存和浮点], [地址计算、循环、类型转换占满 issue slot], [破例二],
+      [延迟总能被并发掩盖], [in-flight 请求不足 ⇒ 带宽起不来], [#text(fill: palette.muted)[已讲]],
       [工作量能均匀铺满整卡], [tail effect / wave quantization，SM 空转], [破例三],
     )
     #v(0.45em)
-    #callout("不是说 roofline 没用")[
+    #callout("Roofline 的位置")[
       #text(size: 0.80em)[
-        #accent[它是唯一能给出"还差多远"这个数的模型]。但它给的是#accent[上界]，
-        而打不到上界的原因，都在这四条里 —— 第三条就是刚讲完的 Little's Law。
+        唯一能给出#accent["还差多远"]的模型；给的是#accent[上界]。
+        打不到的原因 → 这四条（③ = Little's Law，已讲）
       ]
     ]
   ],
 )
 
-== 破例一: hierarchical roofline
+== 破例一 多级 Roofline Hierarchical Roofline
 // 内容：每一级存储都有自己的 I（分母换成"从该级搬的字节数"），于是每一级都有自己的斜边。
 //       tiling 把 DRAM 的 I 推上去，但 SMEM 的 I 一点没变 —— 搬运只是被推到了下一级。
 #layouts.diagram(
@@ -1409,24 +1363,22 @@
   [#hierarchical-roofline-figure()],
   [
     #text(size: 0.76em)[
-      DRAM 那条斜边不是唯一的天花板。同一个 kernel 在#accent[每一级存储]上都有自己的 $I$
-      （分母换成"从该级搬的字节数"），于是每级都有自己的斜边 ——
-      带宽越高，斜边越陡、脊点越靠右。
+      #accent[每级存储]各有一条斜边：分母 = 从该级搬的字节数；
+      带宽 ↑ ⇒ 斜边越陡、脊点越靠右
     ]
     #v(0.45em)
-    #callout("tiling 只是把搬运推到下一级")[
+    #callout("tiling 的效果")[
       #text(size: 0.72em)[
-        shared-memory tiling 让 DRAM 的 $I$ 变大，#accent[但 SMEM 的 $I$ 一点没变]。
-        所以 Part 2 里的 #accent[register tiling] 才是必需的 ——
-        它提高的是#emph[相对 SMEM 的 $I$]。
+        smem tiling：DRAM 的 $I$ ↑，#accent[SMEM 的 $I$ 不变]
+        ⇒ 还需 #accent[register tiling]（Part 2，相对 SMEM 的 $I$）
         #v(0.3em)
-        离 DRAM 峰值还远却上不去，很可能是 #accent[L2 / L1 先饱和] —— 看 NCU 的 SOL 谁占用最高。
+        离 DRAM 峰值远却上不去 ⇒ #accent[L2 / L1 先饱和] → 看 NCU SOL
       ]
     ]
   ],
 )
 
-== 破例二: issue bound —— 瓶颈是指令条数，不是字节数
+== 破例二 Issue Bound
 // 内容：Roofline 只数浮点和字节，但每个 scheduler 每 cycle 只能发射 1 条指令，
 //       地址计算 / 循环控制 / 边界判断全都要占 issue slot。
 //       这正好解释了前面 float4 的收益里有一部分不来自带宽。
@@ -1444,36 +1396,36 @@
     #v(0.4em)
     #align(left)[
       #text(size: 0.78em)[
-        解法都是"用#accent[更少的指令]搬同样多的字节"：
-        - #accent[向量化]（`float4`）：字节数不变，指令数变 1/4
+        方向：用#accent[更少的指令]搬同样多的字节
+        - #accent[向量化]（`float4`）：字节不变，指令 ÷4
         - #accent[`#pragma unroll`]：摊薄循环的比较与自增
-        - #accent[预算好索引]：不变量提到循环外，别重复整数乘除
-        - #accent[Hopper TMA]：一条指令描述整个多维 tile，地址计算开销归零
+        - #accent[预算好索引]：不变量提出循环外
+        - #accent[Hopper TMA]：一条指令描述整个 tile → 地址计算归零
       ]
     ]
   ],
   [
     #text(size: 0.78em)[
-      每个 scheduler #accent[每 cycle 只能发射 1 条指令]，而地址计算、循环控制、
-      边界判断、类型转换全都要占 issue slot。
+      每 scheduler #accent[每 cycle 1 条]；
+      地址计算、循环控制、边界判断、类型转换 → 都占 issue slot
     ]
     #v(0.45em)
     #callout("典型症状")[
       #text(size: 0.76em)[
-        NCU 里 Compute 和 Memory #accent[两个 SOL 都不高]，
-        但 `smsp__inst_executed` 很大，warp stall 主要是
-        `no_instruction` / `dispatch_stall`。
+        Compute / Memory #accent[两个 SOL 都不高]；
+        `smsp__inst_executed` 大；
+        stall = `no_instruction` / `dispatch_stall`
       ]
     ]
     #v(0.4em)
     #note[
-      回看前面 `float4` 的 +12%：#accent[一部分是在飞字节变多]（路线二），
-      另一部分是#accent[指令条数变成 1/4] —— 后者 Roofline 里根本没有对应的项。
+      `float4` 的 +12% = #accent[in-flight bytes ↑]（路线二）
+      与 #accent[指令 ÷4]（Roofline 之外的项）
     ]
   ],
 )
 
-== 破例三: tail effect / wave quantization
+== 破例三 Tail Effect
 // 内容：GPU 以 wave 为粒度铺 block，最后一个 wave 铺不满就纯粹空转。
 //       132 SM 上 launch 133 个 block → 利用率腰斩。呼应前面"grid 一定要够大"。
 #layouts.diagram(
@@ -1481,8 +1433,8 @@
   [#wave-quantization-figure()],
   [
     #text(size: 0.74em)[
-      GPU 以 #accent[wave] 为粒度铺 block：一个 wave = 所有 SM 各驻留满一批 block。
-      最后一个 wave 没铺满，剩下的 SM 就#accent[纯粹空转]，而 kernel 必须等它跑完。
+      1 wave = 所有 SM 各驻留满一批 block；
+      最后一个 wave 铺不满 ⇒ SM #accent[纯粹空转]，kernel 等它跑完
     ]
     #v(0.35em)
     #metric-table(
@@ -1498,11 +1450,11 @@
       [1321], [11], [#accent[91.0%]],
     )
     #v(0.3em)
-    #callout("GEMM 里的对应现象")[
+    #callout("GEMM 对应物")[
       #text(size: 0.68em)[
-        block 数越大量化误差越被摊薄，这是"#accent[grid 一定要够大]"的另一半理由。
-        GEMM 里的对应物叫 #accent[tile quantization]：8192 被 tile $128 times 128$ 整除，
-        改成 8200 就多出一排几乎空转的 tile。
+        block 数 ↑ ⇒ 量化误差摊薄（#accent[grid 要够大]的另一半理由）；
+        #accent[tile quantization]：8192 整除 $128 times 128$，
+        8200 ⇒ 多一排几乎空转的 tile
       ]
     ]
   ],
@@ -1520,11 +1472,11 @@
 = Act I — Preview
 
 #section-intro(
-  objective: [从 GEMM 语义、data reuse 与简单 Roofline 建立完整优化地图。],
+  objective: [GEMM 语义 · data reuse · 简单 Roofline → 优化地图],
   question: [哪些数据值得复用？复用到哪一层？],
 )
 
-== GEMM Workload: 计算语义与 Reuse
+== GEMM 语义与复用 GEMM Semantics & Reuse
 // 内容：C = A·B；每个输出需要的 A/B 元素；同行/同列输出共享哪些数据；
 //       "数据移动 / FMA" 才是 GEMM 的价值所在。
 #layouts.full(
@@ -1532,7 +1484,7 @@
   [#todo[GEMM 语义、三个 workload-level 问题、reuse 结论。]],
 )
 
-== 第一次引入 Roofline
+== Roofline 引入 Roofline Intro
 // 内容：arithmetic intensity = useful computation / data moved；
 //       P <= min(P_compute, BW * AI)；只有 HBM roof 与 compute roof。
 #layouts.diagram(
@@ -1540,7 +1492,7 @@
   [#todo[每搬一个 byte 只做少量计算时，性能受数据移动限制。]],
 )
 
-== GEMM 的 Roofline Paradox
+== Roofline 悖论 Roofline Paradox
 // 内容：算法级 AI ~= N/6（高），naive 代码级 AI ~= 0.25（低）。
 //       三种 AI 口径：Algorithmic / Code-level / Measured。
 #layouts.compare(
@@ -1548,7 +1500,7 @@
   [#todo[Naive 代码级: Bytes ≈ 8MNK, AI ≈ 0.25 FLOP/byte。]],
 )
 
-== 用 Tiling 说明 Reuse 的数量级
+== Tiling 与复用量级 Tiling & Reuse
 // 内容：T x T tile，AI_global-to-shared = T/4；T=32 时约 8 FLOP/byte（↑32x）。
 //       shared memory 在这里只给 workload 级定义（block 内共享的临时存储）。
 #layouts.diagram(
@@ -1556,7 +1508,7 @@
   [#todo[shared tiling 的首要价值是捕获 block-level reuse，减少高层数据移动。]],
 )
 
-== GEMM Evolution Map (V0 → V6)
+== 优化路线图 Evolution Map
 // 内容：完整优化路线预览，不展开硬件细节：
 //       V0 naive → V1 warp-friendly mapping → V2 shared tiling →
 //       V3 1D register → V4 2D outer product → V5 vectorized → V6 bank-aware。
@@ -1571,11 +1523,11 @@
 = Act II — Explain
 
 #section-intro(
-  objective: [逐层打开 GPU 硬件，用设计约束解释每项优化为什么存在。],
+  objective: [逐层打开硬件 → 每项优化背后的设计约束],
   question: [为什么相邻线程最好访问相邻地址？为什么 shared memory 需要显式管理？],
 )
 
-== Episode 1 — SIMT 与 Warp 执行
+== Episode 1 — SIMT 与 Warp SIMT & Warp
 // 内容：SIMT 折中（scalar threads → 32-thread warp → 共享控制 → 并行 lane）；
 //       规则控制流/地址摊薄成本，不规则仍正确但吞吐下降。
 #layouts.diagram(
@@ -1638,7 +1590,7 @@
 //       scheduler 在连续 issue cycle 选不同 eligible warp 覆盖等待。
 #layouts.diagram(
   [#todo[CeTZ: cycle 时间线，W0:LD 发出后 consumer 等待，其他 warp 发射。]],
-  [#todo[GPU 不把 dependent load 变便宜，而是用其他独立工作覆盖延迟。]],
+  [#todo[GPU 用其他独立工作覆盖延迟，而非降低 dependent load 成本。]],
 )
 
 == Episode 2 — Occupancy 与 In-Flight Work
@@ -1697,10 +1649,10 @@
   [#todo[五层 hierarchy 表：scope / controller / 课程例子。]],
 )
 
-== Episode 3 — 为什么 Cache 不替代 Shared Memory
+== Episode 3 — Cache 与 Shared Memory
 // 内容：cache 机会性捕获复用但非语义保证；shared 显式表达 block-level reuse。
 #layouts.compare(
-  [#todo[Cache: 硬件管理、机会性、可能被替换/竞争。]],
+  [#todo[Cache: 硬件管理、机会性、或可替换/竞争。]],
   [#todo[Shared: 显式寻址、block-scoped、需要 load/sync/layout 设计。]],
 )
 
@@ -1711,7 +1663,7 @@
   [#todo[barrier 1: tile 装载完整；barrier 2: 安全覆盖 shared buffer。]],
 )
 
-== Episode 3 — 第一次 Roofline 右移
+== Episode 3 — Roofline 右移 Roofline Shift
 // 内容：AI_naive ≈ 0.25 → AI_tiled ≈ T/4；global bytes 下降需实测；
 //       DRAM % peak 下降不一定是回退。
 #layouts.diagram(
@@ -1763,18 +1715,18 @@
 // ============================================================================
 // Part 3 — reduce
 //
-// 把 Part 1 的"在飞字节"与 Part 2 的 shared memory / bank 知识用到一个
+// 把 Part 1 的"in-flight bytes"与 Part 2 的 shared memory / bank 知识用到一个
 // 有跨线程依赖的 workload 上：竞争往下推一层，代价小一个数量级。
 // ============================================================================
 = Part 3 — reduce
 
 #section-intro(
-  objective: [在一个有跨线程归约依赖的 workload 上复用前两部分的推理链。],
+  objective: [跨线程归约 workload · 复用 Part 1 / 2 推理链],
   question: [竞争应该发生在哪一层？每往下推一层能省多少？],
 )
 
 
-== reduce: 问题
+== reduce 问题 Problem
 // 内容：求和；实测环境说明。
 #layouts.full(
   role: "figure",
@@ -1794,7 +1746,7 @@
   ],
 )
 
-== V1: 每个线程一次 atomicAdd
+== V1 全局原子加 Global Atomic
 // 内容：最直接的并行化；197 ms，1.4 GB/s，慢了三个数量级。
 #layouts.split(
   [
@@ -1812,10 +1764,8 @@
     ]
     #v(0.5em)
     #text(size: 0.80em)[
-      最直接的并行化：$N$ 个线程，
-      每个线程把自己那个数加到#accent[同一个地址]上。
-      正确性由硬件保证 —— `atomicAdd`
-      的读-改-写不会被打断。
+      $N$ 线程 → #accent[同一个地址] `atomicAdd`
+      （RMW 硬件不可中断）
     ]
     #v(0.45em)
     #callout("实测 197 ms，1.4 GB/s")[
@@ -1827,26 +1777,24 @@
   secondary-align: center + horizon,
 )
 
-== V1 为什么这么慢
+== V1 瓶颈 V1 Bottleneck
 // 内容：原子加在 L2 slice 上完成；同一地址的请求必须排队串行。
 #layouts.split(
   [
     #text(size: 0.80em)[
-      原子加#accent[不是在线程里做的]。SM 把
-      「地址 + 操作数 + 操作码」打包成请求，
-      送到该地址所属的 #accent[L2 slice]，
-      由 L2 里的 ALU 完成读-改-写。
+      SM 打包「地址 + 操作数 + 操作码」
+      → 该地址的 #accent[L2 slice]，由 L2 的 ALU 做 RMW
     ]
     #v(0.4em)
     #text(size: 0.80em)[
-      原子性来自#accent[只有一个执行点]，不需要锁 ——
-      但同一个地址的请求也因此必须#accent[排队串行]。
+      原子性 ⇐ #accent[单一执行点]（无需锁）
+      ⇒ 同地址请求 #accent[排队串行]
     ]
     #v(0.45em)
-    #callout("瓶颈在哪")[
+    #callout("瓶颈")[
       #text(size: 0.78em)[
-        不是带宽，也不是延迟，
-        而是#accent[单个 L2 slice 对同一地址的 RMW 吞吐]。
+        ≠ 带宽 / 延迟
+        ⇒ #accent[单 L2 slice · 同地址 RMW 吞吐]
       ]
     ]
     #v(0.4em)
@@ -1857,7 +1805,7 @@
       ```
     ]
     #v(0.2em)
-    #note[每个请求在 L2 上放大 58 倍，全部堆在一个地址上排队 #h(0.4em) #chip("NCU model")]
+    #note[每请求在 L2 上 ×58，全堆在一个地址排队 #h(0.4em) #chip("NCU model")]
   ],
   [#atomic-serialization-figure()],
   ratio: (1.1fr, 1fr),
@@ -1890,8 +1838,8 @@
     ]
     #v(0.4em)
     #text(size: 0.80em)[
-      每个 block 先在#accent[自己的 smem 里]归约成 1 个数，再 atomic 一次。
-      原子操作从 $N$ 次降到 $N\/256$ 次。
+      block 内 smem 归约 → 1 个数 → #accent[1 次 atomic]
+      ⇒ $N$ 次 → $N\/256$ 次
     ]
     #v(0.3em)
     #note[1.67 ms，160 GB/s —— 比 V1 快 #accent[118 倍]]
@@ -1901,25 +1849,25 @@
   secondary-align: center + horizon,
 )
 
-== V2 的问题: 活跃线程是散开的
+== V2 散开的活跃线程 Scattered Threads
 // 内容：tid % (2*stride) == 0 → 活跃线程均匀散布；整个 warp 都被调度。
 #layouts.split(
   [
     #text(size: 0.80em)[
-      看图里圈出的线程号：`0, 2, 4, 6, ...`
+      图里圈出的线程号：`0, 2, 4, 6, ...`
     ]
     #v(0.35em)
     #text(size: 0.80em)[
-      条件是 `tid % (2*stride) == 0`，
-      活跃线程#accent[均匀散布在整个 block 里]。
+      `tid % (2*stride) == 0`
+      ⇒ 活跃线程#accent[均匀散布]在整个 block
     ]
     #v(0.35em)
     #text(size: 0.80em)[
-      一个 warp 的 32 个 lane 中，第一轮只有 16 个干活，第二轮 8 个……
-      但#accent[整个 warp 都必须被调度]，没干活的 lane 只是被 predicate 掉。
+      干活 lane：16 → 8 → …，
+      但#accent[整个 warp 仍参与调度]（空 lane 经 predicate 跳过）
     ]
     #v(0.45em)
-    #callout("代价在指令条数上")[
+    #callout("代价：指令条数")[
       #text(size: 0.80em)[
         V2 执行了 #accent[1.55 亿] 条 warp 指令。
       ]
@@ -1931,7 +1879,7 @@
   secondary-align: center + horizon,
 )
 
-== V3: 让活跃线程连续
+== V3 连续线程 Contiguous Threads
 // 内容：idx = 2*stride*tid；后面的 warp 可以整个退出；指令数 ÷2.5。
 #layouts.split(
   [
@@ -1948,16 +1896,16 @@
     ]
     #v(0.45em)
     #text(size: 0.80em)[
-      改用 `idx = 2*stride*tid`：干活的是 #accent[tid 0,1,2,3...]，连续。
+      `idx = 2*stride*tid` ⇒ 干活的是 #accent[tid 0,1,2,3...]，连续
     ]
     #v(0.35em)
     #text(size: 0.80em)[
-      图里圈出的线程号变成了 `0, 1, 2, 3, ...` ——
-      后面的 warp 可以#accent[整个退出]。
+      圈出的线程号 → `0, 1, 2, 3, ...`
+      ⇒ 后面的 warp #accent[整个退出]
     ]
     #v(0.35em)
     #text(size: 0.80em)[
-      指令数从 1.55 亿降到 #accent[6167 万]（÷2.5）。
+      指令数 1.55 亿 → #accent[6167 万]（÷2.5）
     ]
     #v(0.3em)
     #note[0.87 ms，308 GB/s —— 比 V2 快 #accent[1.9 倍]]
@@ -1967,17 +1915,17 @@
   secondary-align: center + horizon,
 )
 
-== 但 V3 引入了 bank conflict
+== V3 Bank Conflict
 // 内容：V3 的 bank conflict 多 170 倍，但仍然更快；指令数是主导。
 #layouts.compare(
   [
     #text(size: 0.80em)[
-      `s[idx]`，`idx = 2*stride*tid` —— 访问是#accent[跨步的]。
+      `s[idx]`，`idx = 2*stride*tid` ⇒ 访问#accent[跨步]
     ]
     #v(0.35em)
     #text(size: 0.80em)[
-      smem 有 32 个 bank，跨步 2 → 一半 lane 撞同一 bank，
-      跨步 4 → 1/4……#accent[一次请求要拆成多个 wavefront]。
+      32 banks：跨步 2 ⇒ 一半 lane 同 bank；跨步 4 ⇒ 1/4……
+      ⇒ 一次请求拆成#accent[多个 wavefront]
     ]
     #v(0.5em)
     #metric-table(
@@ -1986,25 +1934,24 @@
       align: (left, right, right),
       [], [bank conflict], [wavefront/请求],
       [V2], [40 093], [1.01],
-      [*V3*], [#text(fill: palette.teal)[6 934 667]], [#text(fill: palette.teal)[1.49]],
+      [*V3*], [#text(fill: palette.accent, weight: "bold")[6 934 667]], [#text(fill: palette.accent, weight: "bold")[1.49]],
       [V4], [34 354], [1.01],
     )
   ],
   [
-    #callout("一个值得注意的细节")[
+    #callout("细节")[
       #text(size: 0.80em)[
-        V3 的 bank conflict 比 V2 #accent[多了 170 倍]，但它仍然#accent[更快]。
+        V3 conflict 比 V2 #accent[多 170 倍]，却仍#accent[更快]
       ]
       #v(0.3em)
       #text(size: 0.80em)[
-        因为 V2 的瓶颈是#accent[指令条数]（1.55 亿），
-        V3 用 2.5× 的指令削减，盖过了 conflict 带来的 1.49× wavefront 放大。
+        V2 瓶颈 = #accent[指令条数]（1.55 亿）；
+        指令 ÷2.5 #h(0.2em) > #h(0.2em) wavefront ×1.49
       ]
     ]
     #v(0.45em)
     #note[
-      V3 比 V4 多出的 699 万个 wavefront，
-      与它的 693 万次 bank conflict 几乎完全对应。
+      V3−V4 wavefront 差 699 万 ≈ bank conflict 693 万
     ]
   ],
 )
@@ -2025,11 +1972,11 @@
     ]
     #v(0.45em)
     #text(size: 0.80em)[
-      stride #accent[从大到小折半]，活跃线程始终是#accent[前 stride 个]。
+      stride #accent[从大到小折半] ⇒ 活跃线程 = #accent[前 stride 个]
     ]
     #v(0.4em)
     #text(size: 0.80em)[
-      两个好处同时拿到：
+      同时拿到：
       - 活跃线程连续 → #accent[无 divergence]
       - `s[tid]` 连续访问 → #accent[无 bank conflict]
     ]
@@ -2041,18 +1988,17 @@
   secondary-align: center + horizon,
 )
 
-== V5: 让每个线程多干活
+== V5 Grid-Stride 循环 Grid-Stride
 // 内容：grid-stride 循环；全场最大的一步（3.1×）。
 #layouts.split(
   [
     #text(size: 0.80em)[
-      前面几版都是#accent[一个元素一个线程]，
-      $2^26$ 个元素要开 26 万个 block。
-      而且载入后第一轮就有一半线程闲置。
+      前面：#accent[1 元素 / 线程] ⇒ $2^26$ 元素 = 26 万 block；
+      载入后第一轮就一半线程闲置
     ]
     #v(0.4em)
     #text(size: 0.80em)[
-      改成#accent[固定网格 + grid-stride 循环]：每个线程先串行累加多个元素。
+      改为#accent[固定网格 + grid-stride]：每线程先串行累加多元素
     ]
     #v(0.4em)
     #code.code-block(numbers: false)[
@@ -2068,17 +2014,16 @@
     ]
   ],
   [
-    #callout("这一步是全场最大的提升")[
+    #callout("实测：最大的一步")[
       #text(size: 0.92em)[0.78 ms → #accent[0.25 ms]]
       #v(0.2em)
       #text(size: 0.82em)[344 GB/s → #accent[1074 GB/s]]
     ]
     #v(0.5em)
     #text(size: 0.78em)[
-      原因：
-      - 每线程有#accent[多个独立的加法在飞] → 访存并行度（MLP）上来了
-      - block 数固定为 SM×16，#accent[不再有启动开销和尾部效应]
-      - 归约的树只需要做#accent[一次]，而不是 26 万次
+      - 每线程#accent[多个独立加法in-flight] ⇒ MLP ↑
+      - block = SM×16 固定 ⇒ 无启动开销 / 尾部效应
+      - 归约树只做 #accent[1 次]（不再 26 万次）
     ]
     #v(0.45em)
     #note[指令数：5276 万 → #accent[560 万]（÷9.4）]
@@ -2092,12 +2037,12 @@
 #layouts.split(
   [
     #text(size: 0.80em)[
-      折半归约到 `stride ≤ 16` 时，参与的线程#accent[全在一个 warp 内]。
+      `stride ≤ 16` ⇒ 参与线程#accent[全在一个 warp 内]
     ]
     #v(0.35em)
     #text(size: 0.80em)[
-      warp 内的 32 个 lane 可以#accent[直接交换寄存器]，
-      根本不需要经过 shared memory。
+      warp 内 32 lane #accent[直接交换寄存器]
+      ⇒ 不过 shared memory
     ]
     #v(0.4em)
     #code.code-block(numbers: false)[
@@ -2121,7 +2066,7 @@
   secondary-align: center + horizon,
 )
 
-== Shuffle 指令族
+== Shuffle 指令族 Shuffle Instructions
 // 内容：四条指令的语义与典型用途。
 #layouts.stack(
   top-role: "plain",
@@ -2138,7 +2083,7 @@
   ],
   [
     #text(size: 0.80em)[
-      语义统一：#accent[每个 lane 交出自己的 `var`，再按规则取回某个 lane 的值]。
+      #accent[每 lane 交出 `var` → 按规则取回某 lane 的值]
       #h(0.5em) #chip("CUDA contract")
     ]
     #v(0.35em)
@@ -2159,7 +2104,7 @@
   ],
 )
 
-== 蝶形归约的过程
+== 蝶形归约 Butterfly Reduce
 // 内容：xor 全 lane 得结果 vs down 只有 lane 0 有效。
 #layouts.stack(
   rows: (62%, auto),
@@ -2171,14 +2116,14 @@
     #layouts.compare(
       [
         #text(size: 0.78em)[
-          *`xor`（蝶形）*：#accent[所有 lane] 都拿到结果。
-          后面每个 lane 都要用这个值时（softmax 除以 sum）省一次广播。
+          *`xor`（蝶形）*：#accent[所有 lane] 得结果
+          ⇒ 后续每 lane 都要用时（softmax ÷ sum）省一次广播
         ]
       ],
       [
         #text(size: 0.78em)[
-          *`down`（折半）*：只有 #accent[lane 0] 有效。
-          指令条数完全相同，选哪个取决于#accent[结果要出现在几个 lane 上]。
+          *`down`（折半）*：仅 #accent[lane 0] 有效；
+          指令数相同 ⇒ 看#accent[结果要落在几个 lane]
         ]
       ],
       panel: false,
@@ -2188,7 +2133,7 @@
   ],
 )
 
-== mask 与 width
+== Mask 与 Width
 // 内容：mask 在分支内部写全 1 是未定义行为；width 把 warp 切成子段。
 #layouts.compare(
   [
@@ -2203,14 +2148,14 @@
     #v(0.45em)
     #callout("Volta 之后")[
       #text(size: 0.76em)[
-        independent thread scheduling 引入后，warp 内不再保证隐式锁步，
-        旧的无 `_sync` 版本 `__shfl` #accent[已被移除]。
-        忘记 mask 是一个很隐蔽、且只在特定 GPU 上复现的 bug。
+        independent thread scheduling ⇒ 不再隐式锁步；
+        无 `_sync` 的 `__shfl` #accent[已移除]。
+        忘 mask = 隐蔽、只在特定 GPU 复现的 bug
       ]
     ]
   ],
   [
-    #kicker[`width`：把 warp 切成若干子段]
+    #kicker[`width`：warp 切成子段]
     #v(0.35em)
     #text(size: 0.78em)[
       - 默认 32；设为 8 则 warp 分成 4 段，
@@ -2219,13 +2164,12 @@
     ]
     #v(0.45em)
     #note[
-      两个参数都属于 CUDA 编程契约，不随架构变化 ——
-      但它们保证的是#emph[正确性]，不是性能。
+      两个参数 = CUDA 契约：保证#emph[正确性]，不保证性能
     ]
   ],
 )
 
-== V6 完整实现: 两级归约
+== V6 两级归约 Two-Level Reduce
 // 内容：warp 内 shuffle → 每 warp 写 1 个值 → 第一个 warp 再归约一次。
 #layouts.stack(
   top-role: "plain",
@@ -2264,13 +2208,13 @@
   ],
 )
 
-== V7: 再加上向量化访存
+== V7 向量化访存 Vectorized Loads
 // 内容：float4 读输入；83.9% of DRAM peak，compute 仅 10.1%。
 #layouts.split(
   [
     #text(size: 0.80em)[
-      到 V6 为止，瓶颈已经完全回到#accent[读输入]上了。
-      一次 `float4` 读 16 字节，#accent[指令条数减少到 1/4]。
+      瓶颈回到#accent[读输入]；
+      `float4` = 16 B/次 ⇒ 指令 ÷4
     ]
     #v(0.4em)
     #code.code-block(numbers: false)[
@@ -2300,7 +2244,7 @@
   secondary-align: center + horizon,
 )
 
-== 实测结果
+== 实测结果 Results
 // 内容：V1→V7 完整表 + 带宽柱状图。
 #layouts.stack(
   top-role: "card",
@@ -2311,7 +2255,7 @@
       columns: (auto, auto, auto, auto, auto, auto),
       align: (left, right, right, right, right, center),
       [版本], [时间], [带宽], [vs V1], [warp 指令], [结果正确],
-      [V1 global atomic], [197.4 ms], [1.4 GB/s], [1×], [—], [#text(fill: palette.teal)[✗]],
+      [V1 global atomic], [197.4 ms], [1.4 GB/s], [1×], [—], [#text(fill: palette.accent, weight: "bold")[✗]],
       [V2 smem，散开], [1.67 ms], [161 GB/s], [118×], [1.55 亿], [✓],
       [V3 连续线程], [0.87 ms], [308 GB/s], [227×], [6167 万], [✓],
       [V4 sequential], [0.78 ms], [344 GB/s], [253×], [5276 万], [✓],
@@ -2328,19 +2272,17 @@
   [#reduce-bandwidth-figure()],
 )
 
-== 小结
+== 小结 Summary
 // 内容：五条收束；竞争往下推一层，代价小一个数量级。
 #layouts.full(
   role: "figure",
   [
     #text(size: 0.82em)[
-      + *reduce 的上限是把输入读一遍的时间*，所有优化都在逼近这条线
-      + *V1 的问题不是带宽，是竞争*：原子操作在 L2 上串行，
-        而且 float32 累加到 $2^24$ 就#accent[停止增长]
-      + *V2→V3 的收益来自指令数，不是 divergence 本身*：
-        V3 的 bank conflict 反而多了 170 倍，但指令少了 2.5 倍，所以更快
-      + *V4 同时消掉两者*；#accent[V5 的 grid-stride 是全场最大的一步]（3.1×）
-      + *V6 用 shuffle 省掉同步和 smem*，为后续融合（softmax / norm）留出空间
+      + 上限 = #accent[读一遍输入的时间] ⇒ 所有优化都在逼近
+      + V1：瓶颈 = #accent[竞争]（L2 串行）；fp32 累加到 $2^24$ 停止增长
+      + V2→V3：收益 = #accent[指令 ÷2.5]（conflict ×170 仍更快）
+      + V4：divergence + conflict 同时消；#accent[V5 grid-stride = 最大一步]（3.1×）
+      + V6 shuffle：免同步、免 smem → softmax / norm 融合留空间
     ]
     #v(0.55em)
     #align(center)[
@@ -2352,7 +2294,7 @@
 )
 
 
-== NCU 详细走查
+== NCU 走查 NCU Walkthrough
 // 内容：完整 ncu 命令与 section 解读：SpeedOfLight / MemoryWorkload /
 //       SchedulerStats / WarpStateStats / SourceCounters；
 //       固定分析顺序：Duration → SOL → Memory → Scheduler → Warp → Source → Occupancy。
@@ -2368,11 +2310,11 @@
 = Act III — Rebuild
 
 #section-intro(
-  objective: [按 V0 → V6 重建 kernel，用 correctness harness 与 NCU 验证瓶颈迁移。],
+  objective: [V0 → V6 重建 · correctness harness + NCU 验证瓶颈迁移],
   question: [每一步在消除哪个瓶颈？下一个瓶颈是什么？],
 )
 
-== 通用 Kernel 设计流程
+== Kernel 设计流程 Design Flow
 // 内容：identify reuse → 选择协作作用域 → 放到匹配 memory level →
 //       warp lane 映射 → 物理资源检查 → 保留足够独立工作 → 测量验证。
 #layouts.triptych(
@@ -2468,7 +2410,7 @@
   [#todo[三条 takeaway 收束 + 瓶颈迁移图。]],
 )
 
-== 后续课程接口
+== 后续课程 Next Sessions
 // 内容：cp.async / LDGSTS / TMA / double buffering / software pipeline / Tensor Core
 //       只预告要解决什么问题。
 #layouts.full(

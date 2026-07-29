@@ -116,7 +116,7 @@
   import cetz.draw: *
 
   let pale = palette.surface-strong
-  let mio-fill = rgb("#DDD5DA")
+  let mio-fill = palette.scheduler
   let centers = (14.0, 35.5, 57.0, 78.5)
 
   rect(
@@ -339,9 +339,9 @@
     let fills = (
       unused: palette.surface-strong,
       active: rgb("#D4D7D1"),
-      stalled: rgb("#008A68"),
-      eligible: rgb("#9FD434"),
-      selected: rgb("#C3E86A"),
+      stalled: rgb("#9AA09A"),
+      eligible: palette.accent,
+      selected: palette.accent.lighten(45%),
     )
 
     let state-fill(state) = fills.at(state)
@@ -407,8 +407,8 @@
         }
 
         if cycle.issue == "bubble" {
-          circle((x + width / 2, 12.0), radius: 2.0, fill: rgb("#F5E3DB"), stroke: none)
-          content((x + width / 2, 12.0), text(size: 7.3pt, weight: "bold", fill: rgb("#B94B2D"), [×]))
+          circle((x + width / 2, 12.0), radius: 2.0, fill: rgb("#E3E6E3"), stroke: none)
+          content((x + width / 2, 12.0), text(size: 7.3pt, weight: "bold", fill: palette.ink, [×]))
         } else if cycle.issue == "issued" {
           rect((x, 9.7), (x + width, 14.3), fill: fills.selected, stroke: none, radius: 1.15)
           hatch-cell(x, 10.25, width: width, height: 3.5)

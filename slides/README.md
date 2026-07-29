@@ -29,8 +29,8 @@ slides/
 ├── Makefile
 ├── README.md
 ├── session2.typ      # deck 入口（框架 + Labs 正文）
-├── assets/           # Labs 章节引用的实测图与架构图
-└── theme/            # vendored nv-slides-lab 源码（勿手工修改）
+├── assets/           # Labs 章节引用的实测图与架构图，以及品牌 logo（lcpu/wmhpc/linuxproj）
+└── theme/            # vendored 模板源码，已按 Session 2.pptx 母版定制（见 AGENTS.md）
 ```
 
 ## Labs 章节
@@ -56,7 +56,9 @@ slides/
 
 ## 同步模板
 
-`theme/` 是一次性 vendored 的模板快照。如需升级，从 `nv-slides-lab/src` 重新拷贝以下内容：
+`theme/` 源自一次性 vendored 的模板快照，但已按 `Session 2.pptx` 母版做过定制
+（白底 chrome、品牌 logo、封面版式）。从 `nv-slides-lab/src` 重新拷贝会覆盖这些
+定制，需要手工重新合并：
 
 ```sh
 cp -R nv-theme.typ layouts.typ code-components.typ arch-components.typ lib.typ \

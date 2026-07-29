@@ -22,18 +22,11 @@
   "./_assets/syntaxes/CUDA.sublime-syntax",
 )
 
-#let inline-code(it) = box(
-  inset: (x: 0.34em, y: 0.10em),
-  outset: (y: 0.03em),
-  radius: 3pt,
-  fill: palette.surface-muted,
-  stroke: 0.45pt + palette.grid,
-  text(
-    font: ("JetBrains Mono", "Menlo", "DejaVu Sans Mono"),
-    size: 0.80em,
-    fill: palette.ink,
-    it.text,
-  ),
+#let inline-code(it) = text(
+  font: ("JetBrains Mono", "Menlo", "DejaVu Sans Mono"),
+  size: 0.80em,
+  fill: palette.ink,
+  it.text,
 )
 
 #let code-theme(
@@ -48,18 +41,18 @@
   show: codly.codly-init.with()
   codly.codly(
     languages: code-languages,
-    default-color: palette.teal,
-    radius: 8pt,
-    inset: (x: 0.34em, y: 0.21em),
-    fill: palette.surface-muted,
+    default-color: palette.muted,
+    radius: 0pt,
+    inset: (x: 0pt, y: 0.21em),
+    fill: none,
     zebra-fill: none,
-    stroke: 0.55pt + palette.grid,
+    stroke: none,
     lang-inset: (x: 0.44em, y: 0.16em),
-    lang-radius: 5pt,
+    lang-radius: 0pt,
     lang-stroke: none,
-    lang-fill: palette.surface-strong,
+    lang-fill: none,
     display-icon: false,
-    display-name: true,
+    display-name: false,
     number-format: n => text(
       size: 0.56em,
       fill: palette.muted.lighten(25%),
@@ -69,8 +62,8 @@
     number-placement: "inside",
     smart-indent: true,
     breakable: false,
-    highlighted-default-color: palette.orange.lighten(74%),
-    highlight-radius: 3pt,
+    highlighted-default-color: palette.accent.lighten(80%),
+    highlight-radius: 0pt,
   )
   show raw.where(block: false): inline-code
   body
@@ -82,7 +75,7 @@
   numbers: true,
   highlighted-lines: none,
   highlights: none,
-  fill: palette.surface-muted,
+  fill: none,
 ) = codly.local(
   filename: title,
   number-format: if numbers {
@@ -96,14 +89,8 @@
   body,
 )
 
-#let code-note(title, body) = block(
-  width: 100%,
-  inset: 0.72em,
-  radius: 8pt,
-  fill: palette.panel,
-  stroke: 0.55pt + palette.grid,
-)[
-  #text(size: 0.72em, weight: "bold", fill: palette.lime-dark)[#title]
+#let code-note(title, body) = block(width: 100%)[
+  #text(size: 0.72em, weight: "bold", fill: palette.ink)[#title]
   #v(0.30em)
   #text(size: 0.76em)[#body]
 ]

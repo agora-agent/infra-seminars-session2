@@ -2,54 +2,106 @@
 #import "@preview/cetz:0.5.1"
 
 #let palette = (
-  page: rgb("#F1F2EC"),
-  surface: rgb("#F7F7F1"),
-  surface-strong: rgb("#FBFAF4"),
-  surface-muted: rgb("#E9EDE4"),
+  page: rgb("#FFFFFF"),
+  surface: rgb("#FAFAFA"),
+  surface-strong: rgb("#FFFFFF"),
+  surface-muted: rgb("#EFF1F3"),
   ink: rgb("#171A17"),
   muted: rgb("#6E746D"),
   border: rgb("#39413A"),
-  grid: rgb("#D2D8CC"),
-  lime: rgb("#8DBA20"),
-  lime-dark: rgb("#628B11"),
-  panel: rgb("#D1DDC2"),
-  scheduler: rgb("#B5D8B8"),
-  teal: rgb("#1A8E88"),
-  orange: rgb("#F0A11A"),
-  violet: rgb("#B99ECC"),
-  on-accent: rgb("#FFF9E9"),
+  grid: rgb("#D8DCE0"),
+  accent: rgb("#156082"),
+  lime: rgb("#156082"),
+  lime-dark: rgb("#0E4A64"),
+  panel: rgb("#EDF2F6"),
+  scheduler: rgb("#DCE7EE"),
+  teal: rgb("#6E746D"),
+  orange: rgb("#156082"),
+  violet: rgb("#6E746D"),
+  on-accent: rgb("#FFFFFF"),
 )
 
-#let note(it) = text(size: 0.64em, fill: palette.muted, it)
-#let accent(it) = text(fill: palette.orange, weight: "bold", it)
-#let kicker(it) = text(size: 0.72em, fill: palette.lime-dark, weight: "bold", it)
+// 字体约定（对齐 Session 2.pptx）：正文统一微软雅黑（本机缺失时回退思源黑体/
+// 苹方等黑体）；标题 = 黑体中文 + Times New Roman 英文，英文按 pptx 排版为
+// 大写 + 首字母放大。Times New Roman 无 smcp 特性，small-caps 效果手工合成：
+// 每个拉丁词首字母全尺寸、其余字母大写并缩到 0.82em（对齐 pptx 的 44/36pt）。
+#let font-body = ("Microsoft YaHei", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Heiti SC")
+#let font-title = ("Times New Roman", "Microsoft YaHei", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Heiti SC")
 
-#let chip(it, fill: palette.surface-strong, stroke: 0.8pt + palette.lime) = box(
-  inset: (x: 0.55em, y: 0.18em),
-  radius: 1.1em,
-  fill: fill,
-  stroke: stroke,
-  text(size: 0.62em, fill: palette.lime-dark, weight: "bold", it),
+#let title-text(size: 1.4em, it) = text(
+  font: font-title,
+  size: size,
+  weight: "bold",
+  fill: palette.ink,
+)[
+  #show regex("[\p{Lu}\p{Ll}]+"): word => {
+    let s = word.text
+    upper(s.first()) + text(size: 0.82em)[#upper(s.slice(1))]
+  }
+  #it
+]
+
+// 品牌资产（对齐 Session 2.pptx）：wmhpc = 未名超算队，lcpu = Linux 俱乐部，
+// linuxproj = “Linux 俱乐部项目”徽章（封面 / 章节页左下角）。
+#let brand-mark-wmhpc = "../assets/wmhpc.svg"
+#let brand-mark-lcpu = "../assets/lcpu.svg"
+#let brand-badge-linuxproj = "../assets/linuxproj.svg"
+
+// 内容页品牌区（对齐 Session 2.pptx，几何按 13.33in × 7.5in 坐标系换算）：
+//   - 顶部 0.80in 处通栏 accent 分隔线（2pt）；
+//   - 右上角 wmhpc 字标 + 竖直分隔线 + lcpu 圆形图标。
+#let brand-chrome() = context {
+  let sx = page.width / 13.33
+  let sy = page.height / 7.5
+  place(top + left, dy: 0.80 * sy, line(
+    length: page.width,
+    stroke: 2pt + palette.accent,
+  ))
+  place(top + right, dx: -0.16 * sx, dy: 0.06 * sy)[
+    #grid(
+      columns: 3,
+      column-gutter: 0.15 * sx,
+      align: horizon,
+      image(brand-mark-wmhpc, height: 0.64 * sy),
+      line(angle: 90deg, length: 0.68 * sy, stroke: 1.5pt + palette.ink),
+      image(brand-mark-lcpu, height: 0.71 * sy),
+    )
+  ]
+}
+
+// 封面 / 章节页左下角的 “Linux 俱乐部项目” 徽章（对齐 Session 2.pptx：
+// 位于 (0.13in, 6.96in)，宽 1.97in）。
+#let brand-badge-corner() = context place(
+  bottom + left,
+  dx: 0.13 * page.width / 13.33,
+  dy: -0.14 * page.height / 7.5,
+  image(brand-badge-linuxproj, width: 1.97 * page.width / 13.33),
 )
+
+#let note(it) = text(size: 0.72em, fill: palette.ink, it)
+// 强调只走 pptx 的思路：关键词加粗，不用颜色、不用框。
+#let accent(it) = text(fill: palette.ink, weight: "bold", it)
+#let kicker(it) = text(size: 0.72em, fill: palette.ink, weight: "bold", it)
+
+// 证据标签：纯文本方括号，不用胶囊框。
+#let chip(it, fill: none, stroke: none) = text(size: 0.6em, fill: palette.muted)[\[#it\]]
 
 #let panel-box(
   body,
-  fill: palette.surface,
-  stroke: 0.65pt + palette.grid,
-  inset: 0.68em,
+  fill: none,
+  stroke: none,
+  inset: 0pt,
   height: auto,
 ) = block(
   width: 100%,
   height: height,
   inset: inset,
-  radius: 10pt,
-  fill: fill,
-  stroke: stroke,
   body,
 )
 
-#let callout(title, body, fill: palette.panel) = panel-box(fill: fill, [
-  #kicker(title)
+// 不用圆角框表强调：标题加粗一行 + 直接排内容。
+#let callout(title, body, fill: none) = block(width: 100%, [
+  #text(weight: "bold")[#title]
   #v(0.25em)
   #body
 ])
@@ -129,18 +181,10 @@
   composer: auto,
   ..bodies,
 ) = touying-slide-wrapper(self => {
-  let header(self) = pad(top: 0.75em, x: 0.75em)[
+  let header(self) = pad(top: 0.1em, left: 0.2em)[
     #align(top + left)[
-      #block(width: 100%)[
-        #text(size: 0.52em, fill: palette.lime-dark, weight: "bold")[
-          #utils.display-current-heading(
-            level: 1,
-            depth: self.slide-level,
-            style: auto,
-          )
-        ]
-        #v(0.12em)
-        #text(size: 1.27em, fill: palette.ink, weight: "bold")[
+      #block(width: 78%)[
+        #title-text(size: 1.4em)[
           #utils.fit-to-width(grow: false, 100%)[
             #if title != auto {
               title
@@ -157,26 +201,19 @@
     ]
   ]
 
-  let footer(self) = pad(bottom: 0.65em, right: 0.75em)[
-    #align(bottom + right)[
-      #text(size: 0.56em, fill: palette.muted)[
-        #context utils.slide-counter.display() / #utils.last-slide-number
-      ]
-    ]
-  ]
-
   let self = utils.merge-dicts(
     self,
     config-page(
       fill: palette.page,
+      background: brand-chrome(),
       header: header,
-      footer: footer,
+      footer: none,
     ),
   )
 
   let new-setting = body => {
     set text(
-      font: ("Avenir Next", "Source Han Sans", "PingFang SC", "Hiragino Sans GB", "Heiti SC"),
+      font: font-body,
       size: 20pt,
       fill: palette.ink,
     )
@@ -277,95 +314,58 @@
   )
 })
 
+// Act / Part 封面页（对齐 Session 2.pptx 第 2 页）：白底，页面中部居中的大标题，
+// 下方居中作者 / 日期 / 两家组织，左下角 linuxproj 徽章；objective / question
+// 若有则以小字居中放在信息块下方。几何按 pptx 的 13.33in × 7.5in 坐标系换算。
 #let new-section-slide(config: (:), body) = touying-slide-wrapper(self => {
   let spec = _section-spec(body)
   self = utils.merge-dicts(
     self,
     config-common(freeze-slide-counter: true),
-    config-page(fill: palette.page, margin: (x: 2.2em, y: 1.8em)),
+    config-page(
+      fill: palette.page,
+      margin: 0pt,
+      background: brand-badge-corner(),
+    ),
     config,
   )
-  let title-region = [
-    #grid(
-      columns: (5pt, 1fr),
-      column-gutter: 0.8em,
-      [#block(width: 5pt, height: 9.5em, radius: 3pt, fill: palette.lime)],
-      [
-        #kicker[SECTION]
-        #v(0.55em)
-        #text(size: 2.25em, weight: "bold")[
-          #utils.display-current-heading(level: 1)
-        ]
-        #v(0.55em)
-        #line(length: 2.8em, stroke: 1.8pt + palette.orange)
-      ],
-    )
-  ]
+  let info = self.info
 
-  let side-region = if spec.variant == "diagram" {
-    block(
-      width: 100%,
-      height: 15em,
-      inset: 1.0em,
-      radius: 16pt,
-      fill: palette.panel,
-      stroke: 0.7pt + palette.grid,
-      align(center + horizon, if spec.visual != none { spec.visual } else { section-motif() }),
-    )
-  } else if spec.variant == "question" {
-    block(
-      width: 100%,
-      height: 15em,
-      inset: 1.1em,
-      radius: 16pt,
-      fill: palette.surface,
-      stroke: 0.7pt + palette.grid,
-    )[
-      #kicker[BEFORE WE BEGIN]
-      #v(0.8em)
-      #grid(
-        columns: (4pt, 1fr),
-        column-gutter: 0.65em,
-        [#block(width: 4pt, height: 7.2em, radius: 2pt, fill: palette.orange)],
-        [#text(size: 1.12em, weight: "medium")[#spec.question]],
-      )
-    ]
-  } else {
-    block(
-      width: 100%,
-      height: 15em,
-      inset: 1.1em,
-      radius: 16pt,
-      fill: palette.surface,
-      stroke: 0.7pt + palette.grid,
-    )[
-      #kicker[OBJECTIVE]
-      #v(0.65em)
-      #text(size: 1.0em, weight: "medium")[#spec.objective]
-      #if spec.question != none [
-        #v(1.0em)
-        #line(length: 100%, stroke: 0.6pt + palette.grid)
-        #v(0.7em)
-        #kicker[LISTEN FOR]
-        #v(0.35em)
-        #text(size: 0.82em, fill: palette.muted)[#spec.question]
+  touying-slide(self: self, context {
+    let sy = page.height / 7.5
+    set align(center)
+    place(top + center, dy: 2.55 * sy)[
+      #title-text(size: 2.1em)[
+        #utils.display-current-heading(level: 1)
       ]
     ]
-  }
-
-  let section-content = if spec.variant == "minimal" {
-    align(horizon, block(width: 72%, title-region))
-  } else {
-    align(horizon, grid(
-      columns: (1.05fr, 0.95fr),
-      column-gutter: 1.8em,
-      align: horizon,
-      title-region,
-      side-region,
-    ))
-  }
-
-  touying-slide(self: self, section-content)
+    place(top + center, dy: 5.06 * sy)[
+      #text(size: 0.72em)[
+        #info.author \
+        #info.date
+      ]
+      #v(0.55em)
+      #text(size: 0.64em)[
+        北京大学未名超算队 · Weiming Supercomputing Team \
+        北京大学学生 Linux 俱乐部 · Linux Club of Peking University
+      ]
+    ]
+    if spec.objective != none or spec.question != none {
+      place(top + center, dy: 3.95 * sy)[
+        #block(width: 72%)[
+          #text(size: 0.62em)[
+            #if spec.objective != none [
+              #text(weight: "bold")[目标：]#spec.objective
+            ]
+            #if spec.question != none [
+              \
+              #text(weight: "bold")[问题：]#spec.question
+            ]
+          ]
+        ]
+      ]
+    }
+  })
 })
 
 #let focus-slide(config: (:), body) = touying-slide-wrapper(self => {
@@ -376,7 +376,7 @@
     config,
   )
   set text(
-    font: ("Avenir Next", "Source Han Sans", "PingFang SC", "Hiragino Sans GB", "Heiti SC"),
+    font: font-body,
     size: 1.65em,
     fill: palette.page,
   )
@@ -391,8 +391,8 @@
   show: touying-slides.with(
     config-page(
       ..utils.page-args-from-aspect-ratio(aspect-ratio),
-      margin: (top: 4.05em, bottom: 1.55em, x: 1.8em),
-      header-ascent: 16%,
+      margin: (top: 3.6em, bottom: 1.55em, x: 1.2em),
+      header-ascent: 35%,
       footer-descent: 14%,
     ),
     config-common(
@@ -405,7 +405,7 @@
       init: (self: none, body) => {
         set page(fill: palette.page)
         set text(
-          font: ("Avenir Next", "Source Han Sans", "PingFang SC", "Hiragino Sans GB", "Heiti SC"),
+          font: font-body,
           size: 20pt,
         )
         body
@@ -413,9 +413,9 @@
       alert: utils.alert-with-primary-color,
     ),
     config-colors(
-      primary: palette.lime,
+      primary: palette.accent,
       primary-light: palette.panel,
-      secondary: palette.teal,
+      secondary: palette.muted,
       neutral-lightest: palette.page,
       neutral-dark: palette.ink,
       neutral-darkest: palette.ink,
